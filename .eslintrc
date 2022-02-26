@@ -1,0 +1,21 @@
+{
+  "env": {
+    "jest": true,
+    "node": true
+  },
+  "extends": "airbnb-base",
+  "settings": {
+    "import/resolver": {
+      "node": {
+        "extensions": [".js", ".ts"]
+      }
+    }
+  },
+  "rules": {
+    "semi": [1, "never"],
+    "implicit-arrow-linebreak": 0,
+    "no-console": 0,
+    "camelcase": 0,
+    "no-unused-declaration": true
+  }
+}
