@@ -1,10 +1,13 @@
 {
   "name": "@mykhaliuk/ghpr",
-  "version": "1.0.0",
+  "version": "1.0.",
   "description": "PR creating utility",
+  "publishConfig": {
+    "registry":"https://npm.pkg.github.com"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mykhaliuk/ghpr.git",
+    "url": "git//github.com/mykhaliuk/ghpr.git",
     "directory": "packages/ghpr"
   },
   "bin": {
