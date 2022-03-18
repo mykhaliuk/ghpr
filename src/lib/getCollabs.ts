@@ -6,6 +6,7 @@ const { MultiSelect } = require('enquirer');
 
 export const getCollabs = async (
   collabsPromise: Promise<void | { data: Array<{ login: string }> }>,
+  me: string,
 ) => {
   const deleteLastLine = tempLine('looking for reviewers...');
 
@@ -18,7 +19,13 @@ export const getCollabs = async (
 
   const collabs = [];
 
-  for (const { login } of data) collabs.push(login);
+  for (const { login } of data) {
+    if(me === login) continue;
+
+    collabs.push(login);
+  }
+
+  collabs.sort();
 
   const prompt = new MultiSelect({
     message: '👮\tReviewers',
