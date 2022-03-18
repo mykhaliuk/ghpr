@@ -24,7 +24,9 @@ export const createPR = async (params: PRParams) => {
   tempLine('Creating pull request...');
 
   let body = `${firstCommit}\n\n`;
-  body += `**Related to issue:** [${issue.name}](${issue.url})\n\n`;
+  body += `**Related to issue:** ${
+    issue?.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ''
+  }`;
   body += `## Changelog:\n\n`;
   body += `${commits}\n\n`;
 
