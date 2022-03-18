@@ -33,7 +33,7 @@ module.exports = (async function () {
 
   const commits = await getCommits(base);
   const issue = await setIssue(EHKey);
-  const reviewers = await getCollabs(collabsReq, config.login);
+  const reviewers = await getCollabs(collabsReq);
   const draft = await ifDraft();
   const labels = await getLabels(labelsReq);
 

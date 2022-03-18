@@ -1916,7 +1916,7 @@ const createPR = async (params) => {
     const { me, base, commits, draft, firstCommit, issue, labels, reviewers } = params;
     tempLine('Creating pull request...');
     let body = `${firstCommit}\n\n`;
-    body += `**Related to issue:** ${issue?.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ''}`;
+    body += `**Related to issue:** ${issue?.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ' \n\n'}`;
     body += `## Changelog:\n\n`;
     body += `${commits}\n\n`;
     const command = `hub pull-request ${draft} -p -f -a ${me} -r "${reviewers}" -l "${labels}" -b "${base}" -m "${body}" --edit`;
@@ -1958,7 +1958,7 @@ function throwError(error, code = 1) {
 }
 
 const { MultiSelect: MultiSelect$1 } = require('enquirer');
-const getCollabs = async (collabsPromise, me) => {
+const getCollabs = async (collabsPromise) => {
     const deleteLastLine = tempLine('looking for reviewers...');
     const res = await collabsPromise;
     if (typeof res === 'undefined')
@@ -1966,11 +1966,8 @@ const getCollabs = async (collabsPromise, me) => {
     const { data } = res;
     deleteLastLine();
     const collabs = [];
-    for (const { login } of data) {
-        if (me === login)
-            continue;
+    for (const { login } of data)
         collabs.push(login);
-    }
     collabs.sort();
     const prompt = new MultiSelect$1({
         message: '👮\tReviewers',
@@ -2140,7 +2137,7 @@ module.exports = (async function () {
         .catch(() => throwError('Error fetch collaborators'));
     const commits = await getCommits(base);
     const issue = await setIssue(EHKey);
-    const reviewers = await getCollabs(collabsReq, config.login);
+    const reviewers = await getCollabs(collabsReq);
     const draft = await ifDraft();
     const labels = await getLabels(labelsReq);
     await createPR({

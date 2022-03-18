@@ -1,6 +1,6 @@
 {
   "name": "@mykhaliuk/ghpr",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "PR creating utility",
   "publishConfig": {
     "registry":"https://npm.pkg.github.com"

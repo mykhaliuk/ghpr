@@ -25,7 +25,7 @@ export const createPR = async (params: PRParams) => {
 
   let body = `${firstCommit}\n\n`;
   body += `**Related to issue:** ${
-    issue?.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ''
+    issue?.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ' \n\n'
   }`;
   body += `## Changelog:\n\n`;
   body += `${commits}\n\n`;
