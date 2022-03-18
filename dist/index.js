@@ -1925,7 +1925,7 @@ const createPR = async (params) => {
     const { me, base, commits, draft, firstCommit, issue, labels, reviewers } = params;
     tempLine('Creating pull request...');
     let body = `${firstCommit}\n\n`;
-    body += `**Related to issue:** [${issue.name}](${issue.url})\n\n`;
+    body += `**Related to issue:** ${issue?.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ' \n\n'}`;
     body += `## Changelog:\n\n`;
     body += `${commits}\n\n`;
     const command = `hub pull-request ${draft} -p -f -a ${me} -r "${reviewers}" -l "${labels}" -b "${base}" -m "${body}" --edit`;
@@ -1977,6 +1977,7 @@ const getCollabs = async (collabsPromise) => {
     const collabs = [];
     for (const { login } of data)
         collabs.push(login);
+    collabs.sort();
     const prompt = new MultiSelect$1({
         message: '👮\tReviewers',
         limit: 10,

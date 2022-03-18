@@ -20,6 +20,8 @@ export const getCollabs = async (
 
   for (const { login } of data) collabs.push(login);
 
+  collabs.sort();
+
   const prompt = new MultiSelect({
     message: '👮\tReviewers',
     limit: 10,
