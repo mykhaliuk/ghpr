@@ -1,9 +1,9 @@
 import chalk from 'chalk';
+import { MultiSelect } from 'inquirer';
+
 import { cleanExit } from './cleanExit';
 import { tempLine } from './tempLine';
 import { throwError } from './throwError';
-
-const { MultiSelect } = require('enquirer');
 
 export const getLabels = async (
   labelsPromise: Promise<void | {

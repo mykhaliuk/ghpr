@@ -1,6 +1,6 @@
-import { cleanExit } from './cleanExit';
+import { Toggle } from 'inquirer';
 
-const { Toggle } = require('enquirer');
+import { cleanExit } from './cleanExit';
 
 export const ifDraft = async () => {
   const prompt = new Toggle({

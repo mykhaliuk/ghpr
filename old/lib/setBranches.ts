@@ -1,9 +1,9 @@
+import { Select } from 'inquirer';
+
 import { cleanExit } from './cleanExit';
 import { exec } from './promisifiedExec';
 import { tempLine } from './tempLine';
 import { throwError } from './throwError';
-
-const { Select } = require('enquirer');
 
 const branchesPromise = exec(
   `git branch -l | grep -v "*" | grep -v "/" | sed -E "s/^ +//"`,

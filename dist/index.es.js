@@ -2,32 +2,12 @@
 
 import { Octokit } from '@octokit/core';
 import cp from 'child_process';
+import util$1 from 'util';
 import os from 'os';
 import tty from 'tty';
-import util$1 from 'util';
-import { existsSync, readFileSync, writeFile } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-
-class Api {
-    constructor({ token, login, owner, repo }) {
-        this.me = login;
-        this.owner = owner;
-        this.repo = repo;
-        this.ok = new Octokit({ auth: token });
-    }
-    async getCollabs() {
-        return this.ok.request('GET /repos/{owner}/{repo}/collaborators', {
-            owner: this.owner,
-            repo: this.repo,
-        });
-    }
-    async getLabels() {
-        return this.ok.request('GET /repos/{owner}/{repo}/labels', {
-            owner: this.owner,
-            repo: this.repo,
-        });
-    }
-}
+import { prompt } from 'inquirer';
 
 function createCommonjsModule(fn, module) {
 	return module = { exports: {} }, fn(module, module.exports), module.exports;
@@ -1901,186 +1881,50 @@ chalk.stderr.supportsColor = stderrColor;
 
 var source = chalk;
 
-/**
- * @param {string} message
- * @returns {() => void} clean function that removes las line in stdout
- */
-const tempLine = (message) => {
-    process.stdout.write(source.italic.gray(message));
-    return function () {
-        process.stdout.write('\r\x1b[K');
-    };
+const line = (message) => {
+    process.stdout.write(source.italic.gray(`${message}\n`));
 };
-
-const createPR = async (params) => {
-    const { me, base, commits, draft, firstCommit, issue, labels, reviewers } = params;
-    tempLine('Creating pull request...');
-    let body = `${firstCommit}\n\n`;
-    body += `**Related to issue:** ${issue?.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ' \n\n'}`;
-    body += `## Changelog:\n\n`;
-    body += `${commits}\n\n`;
-    const command = `hub pull-request ${draft} -p -f -a ${me} -r "${reviewers}" -l "${labels}" -b "${base}" -m "${body}" --edit`;
-    const childProcess = cp.spawn(command, { shell: true });
-    process.stdin.pipe(childProcess.stdin);
-    let progressStringRemoved = false;
-    for await (const data of childProcess.stdout) {
-        if (!progressStringRemoved) {
-            process.stdout.write('\r\x1b[K');
-            progressStringRemoved = true;
-        }
-        process.stdout.write(data);
-    }
-    for await (const error of childProcess.stderr) {
-        process.stdout.write(error);
-    }
-};
-
-function exitIfNothing2Commit(commit) {
-    if (!commit) {
-        console.clear();
-        console.log(source.gray.bold.italic('Make a couple commits before 😜'));
-        process.exit(0);
-    }
-}
-
-const cleanExit = () => {
-    const message = source.green.bold('See ya 👋');
-    process.stdout.write(message);
-    process.exit();
-};
-
-function throwError(error, code = 1) {
-    if (error) {
-        console.clear();
-        console.log(error);
-        process.exit(code);
-    }
-}
-
-const { MultiSelect: MultiSelect$1 } = require('enquirer');
-const getCollabs = async (collabsPromise) => {
-    const deleteLastLine = tempLine('looking for reviewers...');
-    const res = await collabsPromise;
-    if (typeof res === 'undefined')
-        return throwError("Can't fetch collabs");
-    const { data } = res;
-    deleteLastLine();
-    const collabs = [];
-    for (const { login } of data)
-        collabs.push(login);
-    collabs.sort();
-    const prompt = new MultiSelect$1({
-        message: '👮\tReviewers',
-        limit: 10,
-        choices: collabs,
-        pointer: '❯ ',
-    });
-    const choice = await prompt.run().catch(cleanExit);
-    return choice?.join(',');
-};
-
-const exec = util$1.promisify(cp.exec);
-
-const getCommits = async (base) => {
-    const { stdout, stderr } = await exec(`git cherry ${base} -v | sed -E "s/(\\+|-) [^ ]+ /- /"`);
-    throwError(stderr);
+const _exec = util$1.promisify(cp.exec);
+const exec = async (command) => {
+    const { stdout, stderr } = await _exec(command);
+    if (stderr)
+        throw new Error(stderr);
     return stdout;
 };
 
-const getFirstCommit = async (base) => {
-    const { stdout, stderr } = await exec(`git cherry ${base} -v | head -n 1 | sed -E "s/(\\+|-) [^ ]+ //"`);
-    throwError(stderr);
-    return stdout;
-};
-
-const { MultiSelect } = require('enquirer');
-const getLabels = async (labelsPromise) => {
-    const deleteLastLine = tempLine('looking for labels...');
-    const labels = [];
-    const res = await labelsPromise;
-    if (typeof res === 'undefined')
-        return throwError("Can't fetch labels");
-    const { data } = res;
-    for (const { name, color } of data)
-        labels.push({ message: source.hex(`#${color}`)(name), name });
-    const prompt = new MultiSelect({
-        name: 'labels',
-        message: '🏷 \tlabels',
-        limit: 10,
-        choices: labels,
-    });
-    deleteLastLine();
-    return prompt.run().catch(cleanExit);
-};
-
-const { Toggle } = require('enquirer');
-const ifDraft = async () => {
-    const prompt = new Toggle({
-        message: '📑\tDraft?',
-        enabled: 'Yep',
-        disabled: 'Nope',
-        initial: false,
-    });
-    const res = await prompt.run().catch(cleanExit);
-    return res ? '-d' : '';
-};
-
-const { Form } = require('enquirer');
-const repoPromise = exec('git config --get remote.origin.url');
-const init = async () => {
-    const deleteLastLine = tempLine('Initializing...');
-    const { stdout: repoData, stderr } = await repoPromise;
-    throwError(stderr);
-    if (!repoData)
-        throwError('No git repo found');
-    const { repo, owner } = parseRepoData(repoData);
-    const { GITHUB_TOKEN, GH_TOKEN } = process.env;
-    const configName = '.ghprrc';
-    const homedir = require('os').homedir();
-    const configPath = join(homedir, configName);
-    let token = GITHUB_TOKEN || GH_TOKEN;
-    if (!token) {
-        throwError(source.red.bold('Error: GitHub token must be set: https://docs.github.com/en/actions/security-guides/automatic-token-authentication'));
+class APIClient {
+    me;
+    repo;
+    owner;
+    ok;
+    constructor({ token, login, owner, repo }) {
+        this.me = login;
+        this.owner = owner;
+        this.repo = repo;
+        this.ok = new Octokit({ auth: token });
     }
-    /** return config if config file is exist */
-    if (existsSync(configPath)) {
-        try {
-            const configData = readFileSync(configPath);
-            // @ts-ignore - because JSON.parse handles raw data
-            const { login, EHKey } = JSON.parse(configData);
-            deleteLastLine();
-            return { token: token, EHKey, login: login, repo, owner };
-        }
-        catch (err) {
-            throwError('Unable parse config file');
-        }
+    async getBranches() {
+        const data = await exec(`git branch -l | grep -v "*" | grep -v "/" | sed -E "s/^ +//"`);
+        return (data || 'main').split('\n').filter(Boolean);
     }
-    /** otherwise create a config file*/
-    const prompt = new Form({
-        name: 'user',
-        message: 'Your GitHub login please:',
-        choices: [
-            {
-                name: 'login',
-                message: 'GitHub login',
-                initial: '',
-            },
-            { name: 'EHKey', message: 'EverHour token', initial: '' },
-        ],
-        validate(values) {
-            if (!values.login)
-                return prompt.styles.danger("I can't leave w/out login 🥺");
-            return true;
-        },
-    });
-    const config = await prompt.run();
-    const configData = JSON.stringify(config);
-    writeFile(configPath, configData, throwError);
-    deleteLastLine();
-    process.stdout.write(source.magentaBright('Config saved to ~/.ghprrc'));
-    return { ...config, token: token, repo, owner };
-};
-function parseRepoData(data) {
+    async getCollabs() {
+        const collabs = await this.ok.request('GET /repos/{owner}/{repo}/collaborators', {
+            owner: this.owner,
+            repo: this.repo,
+        });
+        return collabs.data;
+    }
+    async getLabels() {
+        const labels = await this.ok.request('GET /repos/{owner}/{repo}/labels', {
+            owner: this.owner,
+            repo: this.repo,
+        });
+        return labels.data;
+    }
+}
+
+async function parseRepoData() {
+    const data = await exec('git config --get remote.origin.url');
     // git@github.com:mykhaliuk/ghpr.git
     const { 1: or } = data.split(':');
     // mykhaliuk/ghpr.git
@@ -2090,65 +1934,138 @@ function parseRepoData(data) {
     // ghpr
     return { repo, owner };
 }
-
-const { Select } = require('enquirer');
-const branchesPromise = exec(`git branch -l | grep -v "*" | grep -v "/" | sed -E "s/^ +//"`);
-const setBranches = async () => {
-    const deleteLastLine = tempLine('getting branches...');
-    const { stdout, stderr } = await branchesPromise;
-    throwError(stderr);
-    const branches = (stdout || 'main').split('\n').filter(Boolean);
-    const prompt = new Select({
-        message: '🌿\tBase branch',
-        choices: branches,
-        initial: 'main',
+async function getAPIConfig() {
+    const configName = '.ghprrc';
+    const homedir = require('os').homedir();
+    const configPath = join(homedir, configName);
+    const { repo, owner } = await parseRepoData();
+    if (existsSync(configPath)) {
+        try {
+            const configData = readFileSync(configPath);
+            const config = JSON.parse(configData.toString());
+            return { ...config, repo, owner };
+        }
+        catch (err) {
+            throw new Error('Unable to parse config file');
+        }
+    }
+    line('Initializing...');
+    const { GITHUB_TOKEN, GH_TOKEN } = process.env;
+    const ghtoken = GITHUB_TOKEN || GH_TOKEN || '';
+    const prompts = [];
+    if (!ghtoken) {
+        prompts.push({
+            name: 'token',
+            prefix: '🐙',
+            message: 'Enter your GitHub TOKEN please:',
+            type: 'input',
+            validate(login) {
+                if (!login)
+                    return source.red.bold("I can't leave w/out Github Token 🥺");
+                return true;
+            },
+        });
+    }
+    prompts.push({
+        name: 'login',
+        prefix: '🤓',
+        message: 'Enter your GitHub LOGIN please:',
+        type: 'input',
+        validate(login) {
+            if (!login)
+                return source.red.bold("I can't leave w/out login 🥺");
+            return true;
+        },
     });
-    deleteLastLine();
-    return prompt.run().catch(cleanExit);
-};
+    prompts.push({
+        name: 'trackerName',
+        message: 'Use a tracker ?',
+        prefix: '⏰',
+        type: 'list',
+        choices: [
+            { name: 'everhour', value: 'everhour' },
+            { name: 'toggl', value: 'toggl' },
+            { name: 'no thanks', value: '' },
+        ],
+    });
+    const { login, token = ghtoken, trackerName, } = await prompt(prompts);
+    let tracker = undefined;
+    if (trackerName) {
+        const { trackerToken } = await prompt([
+            {
+                name: 'trackerToken',
+                message: `Enter your ${trackerName} token please:`,
+                type: 'input',
+                prefix: '⏰',
+                validate(trackerToken) {
+                    if (!trackerToken)
+                        return source.red.bold("I can't leave w/out providing a token for the time tracker 🥺");
+                    return true;
+                },
+            },
+        ]);
+        tracker = {
+            app: trackerName,
+            token: trackerToken,
+        };
+    }
+    const config = {
+        token,
+        login,
+        tracker,
+    };
+    const configData = JSON.stringify(config);
+    writeFileSync(configPath, configData);
+    process.stdout.write(source.magentaBright('\nConfig saved to ~/.ghprrc\n'));
+    const { confirm } = await prompt({
+        name: 'confirm',
+        type: 'confirm',
+        message: 'Continue creating your Pull Request ?',
+    });
+    if (!confirm) {
+        process.exit(0);
+    }
+    return { ...config, repo, owner };
+}
+async function createAPIClient() {
+    const config = await getAPIConfig();
+    return new APIClient(config);
+}
 
-const icon = source.green('✔');
-const setIssue = async (apiKey) => {
-    const deleteLastLine = tempLine('looking for issue...');
-    const { stdout, stderr } = await exec(`curl -s --request GET \
-        --url https://api.everhour.com/timers/current \
-        --header 'Content-Type: application/json' \
-        --header 'X-Api-Key: ${apiKey}'`);
-    throwError(stderr);
-    deleteLastLine();
-    const { task } = JSON.parse(stdout);
-    const issue = { name: task?.name ?? 'not found', url: task?.url };
-    process.stdout.write(`${icon} ⏰\t${source.bold('Issue')} ${source.dim('·')} ${issue.name}\n`);
-    return issue;
-};
+class PRBuilder {
+    api;
+    branch;
+    constructor(api) {
+        this.api = api;
+    }
+    async promptBranches() {
+        const branches = await this.api.getBranches();
+        const { branch } = await prompt([
+            {
+                name: 'branch',
+                prefix: '🌿',
+                type: 'list',
+                choices: branches,
+                validate: (value) => {
+                    if (!value)
+                        return 'Please select a branch';
+                },
+            },
+        ]);
+        this.branch = branch;
+    }
+    build() {
+        if (!this.branch)
+            throw new Error('missing branch value');
+        return {
+            branch: this.branch,
+        };
+    }
+}
 
 module.exports = (async function () {
     console.clear();
-    const { EHKey, ...config } = await init();
-    const api = new Api(config);
-    const base = await setBranches();
-    const firstCommit = await getFirstCommit(base);
-    exitIfNothing2Commit(firstCommit);
-    const collabsReq = api
-        .getCollabs()
-        .catch(() => throwError('Error fetch collaborators'));
-    const labelsReq = api
-        .getLabels()
-        .catch(() => throwError('Error fetch collaborators'));
-    const commits = await getCommits(base);
-    const issue = await setIssue(EHKey);
-    const reviewers = await getCollabs(collabsReq);
-    const draft = await ifDraft();
-    const labels = await getLabels(labelsReq);
-    await createPR({
-        me: config.login,
-        base,
-        commits,
-        draft,
-        firstCommit,
-        issue,
-        labels,
-        reviewers,
-    });
-    return process.exit();
+    const client = await createAPIClient();
+    const builder = new PRBuilder(client);
+    await builder.promptBranches();
 })();
