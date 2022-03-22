@@ -9,6 +9,7 @@ import tty from 'tty';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { prompt } from 'inquirer';
+import autocomplete from 'inquirer-autocomplete-prompt';
 
 function createCommonjsModule(fn, module) {
 	return module = { exports: {} }, fn(module, module.exports), module.exports;
@@ -2120,23 +2121,35 @@ async function createAPIClient() {
     return new APIClient(config);
 }
 
+prompt.registerPrompt('autocomplete', autocomplete);
 class PRBuilder {
     api;
     branch;
     issue = null;
+    reviewers = [];
     constructor(api) {
         this.api = api;
     }
     write(icon, title, data) {
         process.stdout.write(`${icon} ${source.bold(`${title}:`)} ${data}\n`);
     }
+    writeIssue() {
+        this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
+    }
+    writeBranch() {
+        this.write('🌿', 'Branch', this.branch || '');
+    }
+    writeReviewers() {
+        this.write('🤓', 'Reviewer', this.reviewers.join(', '));
+    }
     async run() {
         this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
-        this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
+        this.writeIssue();
         const branches = await this.api.getBranches();
         const { branch } = await prompt([
             {
-                name: 'Branch',
+                name: 'branch',
+                message: 'Branch',
                 prefix: '🌿',
                 type: 'list',
                 choices: branches,
@@ -2147,7 +2160,47 @@ class PRBuilder {
             },
         ]);
         this.branch = branch;
-        console.log(this.issue);
+        let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
+        const stopUser = '--stop--';
+        collabs.unshift({
+            login: stopUser,
+        });
+        collabs.push({
+            login: 'world',
+        });
+        collabs.push({
+            login: 'top',
+        });
+        collabs.push({
+            login: 'virginie',
+        });
+        this.writeReviewers();
+        while (true) {
+            const { reviewer } = await prompt([
+                {
+                    name: 'reviewer',
+                    message: '',
+                    prefix: '',
+                    type: 'autocomplete',
+                    source: (_, input) => Promise.resolve(collabs.flatMap((collab) => {
+                        if (!input)
+                            return [collab.login];
+                        const regexp = new RegExp(`${input.toLowerCase()}.*`);
+                        return regexp.test(collab.login.toLowerCase())
+                            ? [collab.login]
+                            : [];
+                    })),
+                },
+            ]);
+            if (reviewer === stopUser)
+                break;
+            collabs = collabs.filter((c) => c.login !== reviewer);
+            this.reviewers.push(reviewer);
+        }
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeReviewers();
     }
     build() {
         if (!this.branch)

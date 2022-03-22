@@ -11,6 +11,7 @@ var tty = require('tty');
 var fs = require('fs');
 var path = require('path');
 var inquirer = require('inquirer');
+var autocomplete = require('inquirer-autocomplete-prompt');
 
 function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e : { 'default': e }; }
 
@@ -19,6 +20,7 @@ var https__default = /*#__PURE__*/_interopDefaultLegacy(https);
 var util__default = /*#__PURE__*/_interopDefaultLegacy(util$1);
 var os__default = /*#__PURE__*/_interopDefaultLegacy(os);
 var tty__default = /*#__PURE__*/_interopDefaultLegacy(tty);
+var autocomplete__default = /*#__PURE__*/_interopDefaultLegacy(autocomplete);
 
 function createCommonjsModule(fn, module) {
 	return module = { exports: {} }, fn(module, module.exports), module.exports;
@@ -2130,23 +2132,35 @@ async function createAPIClient() {
     return new APIClient(config);
 }
 
+inquirer.prompt.registerPrompt('autocomplete', autocomplete__default["default"]);
 class PRBuilder {
     api;
     branch;
     issue = null;
+    reviewers = [];
     constructor(api) {
         this.api = api;
     }
     write(icon, title, data) {
         process.stdout.write(`${icon} ${source.bold(`${title}:`)} ${data}\n`);
     }
+    writeIssue() {
+        this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
+    }
+    writeBranch() {
+        this.write('🌿', 'Branch', this.branch || '');
+    }
+    writeReviewers() {
+        this.write('🤓', 'Reviewer', this.reviewers.join(', '));
+    }
     async run() {
         this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
-        this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
+        this.writeIssue();
         const branches = await this.api.getBranches();
         const { branch } = await inquirer.prompt([
             {
-                name: 'Branch',
+                name: 'branch',
+                message: 'Branch',
                 prefix: '🌿',
                 type: 'list',
                 choices: branches,
@@ -2157,7 +2171,47 @@ class PRBuilder {
             },
         ]);
         this.branch = branch;
-        console.log(this.issue);
+        let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
+        const stopUser = '--stop--';
+        collabs.unshift({
+            login: stopUser,
+        });
+        collabs.push({
+            login: 'world',
+        });
+        collabs.push({
+            login: 'top',
+        });
+        collabs.push({
+            login: 'virginie',
+        });
+        this.writeReviewers();
+        while (true) {
+            const { reviewer } = await inquirer.prompt([
+                {
+                    name: 'reviewer',
+                    message: '',
+                    prefix: '',
+                    type: 'autocomplete',
+                    source: (_, input) => Promise.resolve(collabs.flatMap((collab) => {
+                        if (!input)
+                            return [collab.login];
+                        const regexp = new RegExp(`${input.toLowerCase()}.*`);
+                        return regexp.test(collab.login.toLowerCase())
+                            ? [collab.login]
+                            : [];
+                    })),
+                },
+            ]);
+            if (reviewer === stopUser)
+                break;
+            collabs = collabs.filter((c) => c.login !== reviewer);
+            this.reviewers.push(reviewer);
+        }
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeReviewers();
     }
     build() {
         if (!this.branch)

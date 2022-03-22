@@ -1,7 +1,13 @@
 import { Octokit } from '@octokit/core'
 
 import { exec } from '../utils'
-import { APIConfig, IAPIClient, Issue, TrackerInfo } from './interfaces'
+import {
+  APIConfig,
+  Collaborator,
+  IAPIClient,
+  Issue,
+  TrackerInfo,
+} from './interfaces'
 import { TrackerFactory } from './tracker/index'
 
 export class APIClient implements IAPIClient {
@@ -35,7 +41,7 @@ export class APIClient implements IAPIClient {
     return (data || 'main').split('\n').filter(Boolean)
   }
 
-  public async getCollabs() {
+  public async getCollabs(): Promise<Collaborator[]> {
     const collabs = await this.ok.request(
       'GET /repos/{owner}/{repo}/collaborators',
       {
@@ -44,7 +50,7 @@ export class APIClient implements IAPIClient {
       },
     )
 
-    return collabs.data
+    return collabs.data as Collaborator[]
   }
 
   public async getLabels() {

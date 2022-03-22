@@ -22,14 +22,32 @@ export type APIConfig = {
 export type Collaborator = {
   login: string
   id: number
-  email?: string | null | undefined
-  name?: string | null | undefined
   node_id: string
   avatar_url: string
-  gravatar_id: string | null
+  gravatar_id: ''
   url: string
   html_url: string
+  followers_url: string
+  following_url: string
+  gists_url: string
+  starred_url: string
+  subscriptions_url: string
+  organizations_url: string
+  repos_url: string
+  events_url: string
+  received_events_url: string
+  type: 'User'
+  site_admin: false
+  permissions: {
+    admin: true
+    maintain: true
+    push: true
+    triage: true
+    pull: true
+  }
+  role_name: 'admin'
 }
+
 export type Label = {
   id: number
   node_id: string
