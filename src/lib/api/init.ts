@@ -93,7 +93,7 @@ export async function getAPIConfig(): Promise<APIConfig> {
     type: 'list',
     choices: [
       { name: 'everhour', value: 'everhour' },
-      { name: 'toggl', value: 'toggl' },
+      // { name: 'toggl', value: 'toggl' },
       { name: 'no thanks', value: '' },
     ],
   } as any)

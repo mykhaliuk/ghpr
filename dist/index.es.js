@@ -2,6 +2,7 @@
 
 import { Octokit } from '@octokit/core';
 import cp from 'child_process';
+import https from 'https';
 import util$1 from 'util';
 import os from 'os';
 import tty from 'tty';
@@ -1881,6 +1882,17 @@ chalk.stderr.supportsColor = stderrColor;
 
 var source = chalk;
 
+const deleteLastLine = () => process.stdout.write('\r\x1b[K');
+const tempLine = (message) => {
+    process.stdout.write(source.italic.gray(`${message}`));
+    return deleteLastLine;
+};
+async function withTempLine(line, cb) {
+    tempLine(line);
+    const result = await cb();
+    deleteLastLine();
+    return result;
+}
 const line = (message) => {
     process.stdout.write(source.italic.gray(`${message}\n`));
 };
@@ -1891,17 +1903,85 @@ const exec = async (command) => {
         throw new Error(stderr);
     return stdout;
 };
+const request = async (options) => {
+    return new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+            const chunks = [];
+            res.on('data', (chunk) => {
+                chunks.push(chunk);
+            });
+            req.on('close', () => {
+                const dataStr = Buffer.concat(chunks).toString();
+                const data = JSON.parse(dataStr || '{}');
+                resolve({
+                    data,
+                    response: {
+                        statusCode: res.statusCode,
+                        statusMessage: res.statusMessage,
+                        headers: res.headers,
+                    },
+                });
+            });
+        });
+        req.on('error', (err) => {
+            reject(err);
+        });
+        req.write('');
+    });
+};
+
+class Everhour {
+    apiKey;
+    constructor(apiKey) {
+        this.apiKey = apiKey;
+    }
+    async getActiveIssue() {
+        const { data } = await request({
+            method: 'get',
+            protocol: 'https:',
+            host: 'api.everhour.com',
+            path: '/timers/current',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Api-Key': this.apiKey,
+            },
+        });
+        const { status, task } = data;
+        if (status === 'stopped' || !task)
+            return null;
+        return {
+            url: task.url,
+            name: task.name,
+            number: +task.number,
+        };
+    }
+}
+
+const TrackerFactory = {
+    create(app, apiKey) {
+        if (app === 'everhour') {
+            return new Everhour(apiKey);
+        }
+        throw new Error(`Tracker ${app} is not handled`);
+    },
+};
 
 class APIClient {
-    me;
-    repo;
-    owner;
+    config;
     ok;
-    constructor({ token, login, owner, repo }) {
-        this.me = login;
-        this.owner = owner;
-        this.repo = repo;
+    constructor(config) {
+        this.config = config;
+        const { token } = this.config;
         this.ok = new Octokit({ auth: token });
+    }
+    get owner() {
+        return this.config.owner;
+    }
+    get repo() {
+        return this.config.repo;
+    }
+    get trackerApp() {
+        return this.config.tracker;
     }
     async getBranches() {
         const data = await exec(`git branch -l | grep -v "*" | grep -v "/" | sed -E "s/^ +//"`);
@@ -1920,6 +2000,14 @@ class APIClient {
             repo: this.repo,
         });
         return labels.data;
+    }
+    async getTrackerIssue() {
+        const trackerInfo = this.trackerApp;
+        if (!trackerInfo)
+            return null;
+        const trackerAPI = TrackerFactory.create(trackerInfo.app, trackerInfo.token);
+        const issue = await trackerAPI.getActiveIssue();
+        return issue;
     }
 }
 
@@ -1984,7 +2072,7 @@ async function getAPIConfig() {
         type: 'list',
         choices: [
             { name: 'everhour', value: 'everhour' },
-            { name: 'toggl', value: 'toggl' },
+            // { name: 'toggl', value: 'toggl' },
             { name: 'no thanks', value: '' },
         ],
     });
@@ -2035,14 +2123,20 @@ async function createAPIClient() {
 class PRBuilder {
     api;
     branch;
+    issue = null;
     constructor(api) {
         this.api = api;
     }
-    async promptBranches() {
+    write(icon, title, data) {
+        process.stdout.write(`${icon} ${source.bold(`${title}:`)} ${data}\n`);
+    }
+    async run() {
+        this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
+        this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
         const branches = await this.api.getBranches();
         const { branch } = await prompt([
             {
-                name: 'branch',
+                name: 'Branch',
                 prefix: '🌿',
                 type: 'list',
                 choices: branches,
@@ -2053,6 +2147,7 @@ class PRBuilder {
             },
         ]);
         this.branch = branch;
+        console.log(this.issue);
     }
     build() {
         if (!this.branch)
@@ -2067,5 +2162,5 @@ module.exports = (async function () {
     console.clear();
     const client = await createAPIClient();
     const builder = new PRBuilder(client);
-    await builder.promptBranches();
+    await builder.run();
 })();

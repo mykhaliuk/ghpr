@@ -1,4 +1,5 @@
 import cp from 'child_process'
+import https from 'https'
 import util from 'util'
 
 import chalk from 'chalk'
@@ -19,6 +20,18 @@ export const tempLine = (message: string): (() => void) => {
   return deleteLastLine
 }
 
+type Unpromisify<T> = T extends Promise<infer E> ? E : T
+
+export async function withTempLine<Fn extends () => any>(
+  line: string,
+  cb: Fn,
+): Promise<Unpromisify<ReturnType<Fn>>> {
+  tempLine(line)
+  const result = await cb()
+  deleteLastLine()
+  return result
+}
+
 export const line = (message: string) => {
   process.stdout.write(chalk.italic.gray(`${message}\n`))
 }
@@ -31,4 +44,46 @@ export const exec = async (command: string): Promise<string> => {
   if (stderr) throw new Error(stderr)
 
   return stdout
+}
+
+export type HttpsResponse<T = any> = {
+  data: T
+  response: {
+    statusCode?: number
+    statusMessage?: string
+    headers?: Record<string, any>
+  }
+}
+
+export const request = async <T = any>(
+  options: https.RequestOptions,
+): Promise<HttpsResponse<T>> => {
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      const chunks: any[] = []
+      res.on('data', (chunk: Buffer) => {
+        chunks.push(chunk)
+      })
+
+      req.on('close', () => {
+        const dataStr = Buffer.concat(chunks).toString()
+        const data = JSON.parse(dataStr || '{}') as T
+
+        resolve({
+          data,
+          response: {
+            statusCode: res.statusCode,
+            statusMessage: res.statusMessage,
+            headers: res.headers,
+          },
+        })
+      })
+    })
+
+    req.on('error', (err) => {
+      reject(err)
+    })
+
+    req.write('')
+  })
 }

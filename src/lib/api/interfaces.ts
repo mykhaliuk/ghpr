@@ -1,4 +1,10 @@
-export type TrackerApp = 'everhour' | 'toggl'
+export type Issue = {
+  url: string
+  name: string
+  number: number
+}
+
+export type TrackerApp = 'everhour' // | 'toggl'
 
 export type TrackerInfo = {
   app: TrackerApp
@@ -38,4 +44,5 @@ export interface IAPIClient {
   getCollabs(): Promise<Collaborator[]>
   getLabels(): Promise<Label[]>
   getBranches(): Promise<string[]>
+  getTrackerIssue(): Promise<Issue | null>
 }

@@ -1,19 +1,30 @@
 import { Octokit } from '@octokit/core'
 
 import { exec } from '../utils'
-import { APIConfig, IAPIClient } from './interfaces'
+import { APIConfig, IAPIClient, Issue, TrackerInfo } from './interfaces'
+import { TrackerFactory } from './tracker/index'
 
 export class APIClient implements IAPIClient {
-  protected readonly me: string
-  protected readonly repo: string
-  protected readonly owner: string
+  protected readonly config: APIConfig
   protected readonly ok: Octokit
 
-  constructor({ token, login, owner, repo }: APIConfig) {
-    this.me = login
-    this.owner = owner
-    this.repo = repo
+  constructor(config: APIConfig) {
+    this.config = config
+    const { token } = this.config
+
     this.ok = new Octokit({ auth: token })
+  }
+
+  get owner() {
+    return this.config.owner
+  }
+
+  get repo() {
+    return this.config.repo
+  }
+
+  get trackerApp(): TrackerInfo | undefined {
+    return this.config.tracker
   }
 
   public async getBranches(): Promise<string[]> {
@@ -43,5 +54,16 @@ export class APIClient implements IAPIClient {
     })
 
     return labels.data
+  }
+
+  public async getTrackerIssue(): Promise<Issue | null> {
+    const trackerInfo = this.trackerApp
+    if (!trackerInfo) return null
+
+    const trackerAPI = TrackerFactory.create(trackerInfo.app, trackerInfo.token)
+
+    const issue = await trackerAPI.getActiveIssue()
+
+    return issue
   }
 }
