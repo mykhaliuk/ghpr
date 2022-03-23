@@ -2190,91 +2190,55 @@ class PRBuilder {
         ]);
         return branch;
     }
-    async promptReviewers() {
-        let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
-        const stopUser = '--stop--';
-        collabs.unshift({
-            login: stopUser,
-        });
-        this.writeReviewers();
-        let reviewers = [];
+    async promptAutoComplete(values, mapper) {
+        const doneToken = '--done--';
+        let filteredValues = values.map(mapper);
+        let results = new Set();
         while (true) {
-            let { reviewer } = await inquirer.prompt([
+            let { value } = await inquirer.prompt([
                 {
-                    name: 'reviewer',
+                    name: 'value',
                     message: '- ',
                     prefix: '',
                     type: 'autocomplete',
-                    source: (_, input) => Promise.resolve(collabs.flatMap((collab, idx) => {
-                        let name = collab.login;
-                        if (idx === 0 && input)
-                            return [];
-                        if (idx > 0) {
-                            name = `${idx}. ${collab.login}`;
-                        }
+                    source: (_, input) => Promise.resolve(filteredValues.flatMap((value, idx) => {
+                        let stopValue = [];
+                        if (idx === 0 && !input)
+                            stopValue.push(doneToken);
+                        if (results.has(value))
+                            return stopValue;
+                        const name = `${idx + 1}. ${value}`;
                         if (!input)
-                            return [name];
+                            return [...stopValue, name];
                         const regexpLogin = new RegExp(`${input.toLowerCase()}.*`);
                         const regexpNum = new RegExp(`${idx}.*`);
-                        return regexpLogin.test(collab.login.toLowerCase()) ||
+                        return regexpLogin.test(name.toLowerCase()) ||
                             regexpNum.test(input)
-                            ? [name]
-                            : [];
+                            ? [...stopValue, name]
+                            : stopValue;
                     })),
                 },
             ]);
-            if (reviewer === stopUser)
+            if (value === doneToken)
                 break;
-            reviewer = reviewer.replace(/^\d+\. /, '');
-            collabs = collabs.filter((c) => c.login !== reviewer);
-            reviewers.push(reviewer);
-            if (collabs.length === 1)
+            value = value.replace(/^\d+\. /, '');
+            results.add(value);
+            if (filteredValues.length - results.size === 0)
                 break;
         }
+        return Array.from(results);
+    }
+    async promptReviewers() {
+        let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
+        this.writeReviewers();
+        let reviewers = await this.promptAutoComplete(collabs, (c) => c.login);
         return reviewers;
     }
     async promptLabels() {
-        let labels = await withTempLine('Search for labels', () => this.api.getLabels());
-        const stopUser = '--stop--';
-        labels.unshift({
-            name: stopUser,
-        });
+        let gitLabels = await withTempLine('Search for labels', () => this.api.getLabels());
         this.writeLabels();
-        let selectedLabels = [];
-        while (true) {
-            let { label } = await inquirer.prompt([
-                {
-                    name: 'label',
-                    message: '- ',
-                    prefix: '',
-                    type: 'autocomplete',
-                    source: (_, input) => Promise.resolve(labels.flatMap((label, idx) => {
-                        let name = label.name;
-                        if (idx === 0 && input)
-                            return [];
-                        if (idx > 0) {
-                            name = `${idx}. ${label.name}`;
-                        }
-                        if (!input)
-                            return [name];
-                        const regexpLogin = new RegExp(`${input.toLowerCase()}.*`);
-                        const regexpNum = new RegExp(`${idx}.*`);
-                        return regexpLogin.test(label.name.toLowerCase()) ||
-                            regexpNum.test(input)
-                            ? [name]
-                            : [];
-                    })),
-                },
-            ]);
-            if (label === stopUser)
-                break;
-            label = label.replace(/^\d+\. /, '');
-            labels = labels.filter((c) => c.name !== label);
-            selectedLabels.push(label);
-            if (labels.length === 1)
-                break;
-        }
-        return selectedLabels;
+        const labels = await this.promptAutoComplete(gitLabels, (l) => l.name);
+        return labels;
     }
     async promptDraft() {
         const { draft } = await inquirer.prompt([

@@ -73,108 +73,82 @@ export class PRBuilder {
     return branch
   }
 
+  private async promptAutoComplete<T>(
+    values: T[],
+    mapper: (value: T) => string,
+  ) {
+    const doneToken = '--done--'
+    let filteredValues = values.map(mapper)
+
+    let results = new Set<string>()
+    while (true) {
+      let { value } = await prompt([
+        {
+          name: 'value',
+          message: '- ',
+          prefix: '',
+          type: 'autocomplete',
+          source: (_: string, input: string) =>
+            Promise.resolve(
+              filteredValues.flatMap((value, idx) => {
+                let stopValue = []
+                if (idx === 0 && !input) stopValue.push(doneToken)
+
+                if (results.has(value)) return stopValue
+
+                const name = `${idx + 1}. ${value}`
+
+                if (!input) return [...stopValue, name]
+
+                const regexpLogin = new RegExp(`${input.toLowerCase()}.*`)
+                const regexpNum = new RegExp(`${idx}.*`)
+
+                return regexpLogin.test(name.toLowerCase()) ||
+                  regexpNum.test(input)
+                  ? [...stopValue, name]
+                  : stopValue
+              }),
+            ),
+        },
+      ])
+
+      if (value === doneToken) break
+
+      value = value.replace(/^\d+\. /, '')
+      results.add(value)
+
+      if (filteredValues.length - results.size === 0) break
+    }
+
+    return Array.from(results)
+  }
+
   private async promptReviewers(): Promise<string[]> {
     let collabs = await withTempLine('Search for collabs', () =>
       this.api.getCollabs(),
     )
 
-    const stopUser = '--stop--'
-    collabs.unshift({
-      login: stopUser,
-    } as any)
-
     this.writeReviewers()
-    let reviewers: string[] = []
-    while (true) {
-      let { reviewer } = await prompt([
-        {
-          name: 'reviewer',
-          message: '- ',
-          prefix: '',
-          type: 'autocomplete',
-          source: (_: string, input: string) =>
-            Promise.resolve(
-              collabs.flatMap((collab, idx) => {
-                let name = collab.login
-                if (idx === 0 && input) return []
-                if (idx > 0) {
-                  name = `${idx}. ${collab.login}`
-                }
-
-                if (!input) return [name]
-                const regexpLogin = new RegExp(`${input.toLowerCase()}.*`)
-                const regexpNum = new RegExp(`${idx}.*`)
-                return regexpLogin.test(collab.login.toLowerCase()) ||
-                  regexpNum.test(input)
-                  ? [name]
-                  : []
-              }),
-            ),
-        },
-      ])
-
-      if (reviewer === stopUser) break
-
-      reviewer = reviewer.replace(/^\d+\. /, '')
-      collabs = collabs.filter((c) => c.login !== reviewer)
-      reviewers.push(reviewer)
-
-      if (collabs.length === 1) break
-    }
+    let reviewers: string[] = await this.promptAutoComplete(
+      collabs,
+      (c) => c.login,
+    )
 
     return reviewers
   }
 
   private async promptLabels(): Promise<string[]> {
-    let labels = await withTempLine('Search for labels', () =>
+    let gitLabels = await withTempLine('Search for labels', () =>
       this.api.getLabels(),
     )
 
-    const stopUser = '--stop--'
-    labels.unshift({
-      name: stopUser,
-    } as any)
-
     this.writeLabels()
-    let selectedLabels: string[] = []
-    while (true) {
-      let { label } = await prompt([
-        {
-          name: 'label',
-          message: '- ',
-          prefix: '',
-          type: 'autocomplete',
-          source: (_: string, input: string) =>
-            Promise.resolve(
-              labels.flatMap((label, idx) => {
-                let name = label.name
-                if (idx === 0 && input) return []
-                if (idx > 0) {
-                  name = `${idx}. ${label.name}`
-                }
+    const labels: string[] = await this.promptAutoComplete(
+      gitLabels,
+      (l) => l.name,
+    )
 
-                if (!input) return [name]
-                const regexpLogin = new RegExp(`${input.toLowerCase()}.*`)
-                const regexpNum = new RegExp(`${idx}.*`)
-                return regexpLogin.test(label.name.toLowerCase()) ||
-                  regexpNum.test(input)
-                  ? [name]
-                  : []
-              }),
-            ),
-        },
-      ])
-
-      if (label === stopUser) break
-
-      label = label.replace(/^\d+\. /, '')
-      labels = labels.filter((c) => c.name !== label)
-      selectedLabels.push(label)
-
-      if (labels.length === 1) break
-    }
-
-    return selectedLabels
+    return labels
   }
 
   private async promptDraft(): Promise<boolean> {
