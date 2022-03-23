@@ -41,12 +41,22 @@ export class APIClient implements IAPIClient {
     return (data || 'main').split('\n').filter(Boolean)
   }
 
+  public async getFirstCommit(base: string): Promise<string> {
+    const data = await exec(
+      `git cherry ${base} -v | head -n 1 | sed -E "s/(\\+|-) [^ ]+ //"`,
+    )
+
+    return data.replace(/\n/g, '')
+  }
+
   public async getCollabs(): Promise<Collaborator[]> {
     const collabs = await this.ok.request(
       'GET /repos/{owner}/{repo}/collaborators',
       {
         owner: this.owner,
         repo: this.repo,
+        per_page: 100,
+        page: 1,
       },
     )
 
@@ -57,6 +67,8 @@ export class APIClient implements IAPIClient {
     const labels = await this.ok.request('GET /repos/{owner}/{repo}/labels', {
       owner: this.owner,
       repo: this.repo,
+      per_page: 100,
+      page: 1,
     })
 
     return labels.data

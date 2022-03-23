@@ -1999,10 +1999,16 @@ class APIClient {
         const data = await exec(`git branch -l | grep -v "*" | grep -v "/" | sed -E "s/^ +//"`);
         return (data || 'main').split('\n').filter(Boolean);
     }
+    async getFirstCommit(base) {
+        const data = await exec(`git cherry ${base} -v | head -n 1 | sed -E "s/(\\+|-) [^ ]+ //"`);
+        return data.replace(/\n/g, '');
+    }
     async getCollabs() {
         const collabs = await this.ok.request('GET /repos/{owner}/{repo}/collaborators', {
             owner: this.owner,
             repo: this.repo,
+            per_page: 100,
+            page: 1,
         });
         return collabs.data;
     }
@@ -2010,6 +2016,8 @@ class APIClient {
         const labels = await this.ok.request('GET /repos/{owner}/{repo}/labels', {
             owner: this.owner,
             repo: this.repo,
+            per_page: 100,
+            page: 1,
         });
         return labels.data;
     }
@@ -2138,11 +2146,17 @@ class PRBuilder {
     branch;
     issue = null;
     reviewers = [];
+    labels = [];
+    draft = false;
+    commit = '';
     constructor(api) {
         this.api = api;
     }
     write(icon, title, data) {
         process.stdout.write(`${icon} ${source.bold(`${title}:`)} ${data}\n`);
+    }
+    writeFirstCommit() {
+        this.write('🚚', 'Title:', this.commit || '');
     }
     writeIssue() {
         this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
@@ -2153,9 +2167,13 @@ class PRBuilder {
     writeReviewers() {
         this.write('🤓', 'Reviewer', this.reviewers.join(', '));
     }
-    async run() {
-        this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
-        this.writeIssue();
+    writeDraft() {
+        this.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
+    }
+    writeLabels() {
+        this.write('🏷 ', 'Labels', this.labels.join(', '));
+    }
+    async promptBranch() {
         const branches = await this.api.getBranches();
         const { branch } = await inquirer.prompt([
             {
@@ -2170,54 +2188,135 @@ class PRBuilder {
                 },
             },
         ]);
-        this.branch = branch;
+        return branch;
+    }
+    async promptReviewers() {
         let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
         const stopUser = '--stop--';
         collabs.unshift({
             login: stopUser,
         });
-        collabs.push({
-            login: 'world',
-        });
-        collabs.push({
-            login: 'top',
-        });
-        collabs.push({
-            login: 'virginie',
-        });
         this.writeReviewers();
+        let reviewers = [];
         while (true) {
-            const { reviewer } = await inquirer.prompt([
+            let { reviewer } = await inquirer.prompt([
                 {
                     name: 'reviewer',
-                    message: '',
+                    message: '- ',
                     prefix: '',
                     type: 'autocomplete',
-                    source: (_, input) => Promise.resolve(collabs.flatMap((collab) => {
+                    source: (_, input) => Promise.resolve(collabs.flatMap((collab, idx) => {
+                        let name = collab.login;
+                        if (idx === 0 && input)
+                            return [];
+                        if (idx > 0) {
+                            name = `${idx}. ${collab.login}`;
+                        }
                         if (!input)
-                            return [collab.login];
-                        const regexp = new RegExp(`${input.toLowerCase()}.*`);
-                        return regexp.test(collab.login.toLowerCase())
-                            ? [collab.login]
+                            return [name];
+                        const regexpLogin = new RegExp(`${input.toLowerCase()}.*`);
+                        const regexpNum = new RegExp(`${idx}.*`);
+                        return regexpLogin.test(collab.login.toLowerCase()) ||
+                            regexpNum.test(input)
+                            ? [name]
                             : [];
                     })),
                 },
             ]);
             if (reviewer === stopUser)
                 break;
+            reviewer = reviewer.replace(/^\d+\. /, '');
             collabs = collabs.filter((c) => c.login !== reviewer);
-            this.reviewers.push(reviewer);
+            reviewers.push(reviewer);
+            if (collabs.length === 1)
+                break;
         }
+        return reviewers;
+    }
+    async promptLabels() {
+        let labels = await withTempLine('Search for labels', () => this.api.getLabels());
+        const stopUser = '--stop--';
+        labels.unshift({
+            name: stopUser,
+        });
+        this.writeLabels();
+        let selectedLabels = [];
+        while (true) {
+            let { label } = await inquirer.prompt([
+                {
+                    name: 'label',
+                    message: '- ',
+                    prefix: '',
+                    type: 'autocomplete',
+                    source: (_, input) => Promise.resolve(labels.flatMap((label, idx) => {
+                        let name = label.name;
+                        if (idx === 0 && input)
+                            return [];
+                        if (idx > 0) {
+                            name = `${idx}. ${label.name}`;
+                        }
+                        if (!input)
+                            return [name];
+                        const regexpLogin = new RegExp(`${input.toLowerCase()}.*`);
+                        const regexpNum = new RegExp(`${idx}.*`);
+                        return regexpLogin.test(label.name.toLowerCase()) ||
+                            regexpNum.test(input)
+                            ? [name]
+                            : [];
+                    })),
+                },
+            ]);
+            if (label === stopUser)
+                break;
+            label = label.replace(/^\d+\. /, '');
+            labels = labels.filter((c) => c.name !== label);
+            selectedLabels.push(label);
+            if (labels.length === 1)
+                break;
+        }
+        return selectedLabels;
+    }
+    async promptDraft() {
+        const { draft } = await inquirer.prompt([
+            {
+                name: 'draft',
+                message: 'Draft ?',
+                prefix: '📑',
+                type: 'confirm',
+                default: false,
+            },
+        ]);
+        return draft;
+    }
+    async run() {
+        this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
+        this.writeIssue();
+        this.branch = await this.promptBranch();
+        this.commit = await withTempLine('Retrieve first commit', async () => this.api.getFirstCommit(this.branch));
+        this.writeFirstCommit();
+        this.reviewers = await this.promptReviewers();
         console.clear();
         this.writeIssue();
         this.writeBranch();
+        this.writeFirstCommit();
         this.writeReviewers();
+        this.draft = await this.promptDraft();
+        this.labels = await this.promptLabels();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeFirstCommit();
+        this.writeReviewers();
+        this.writeDraft();
+        this.writeLabels();
     }
     build() {
         if (!this.branch)
             throw new Error('missing branch value');
         return {
             branch: this.branch,
+            draft: this.draft,
+            reviewers: this.reviewers,
         };
     }
 }
