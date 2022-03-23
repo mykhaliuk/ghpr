@@ -2148,7 +2148,7 @@ class PRBuilder {
     reviewers = [];
     labels = [];
     draft = false;
-    commit = '';
+    commit;
     constructor(api) {
         this.api = api;
     }
@@ -2309,14 +2309,16 @@ class PRBuilder {
         this.writeReviewers();
         this.writeDraft();
         this.writeLabels();
+        return this.build();
     }
     build() {
-        if (!this.branch)
-            throw new Error('missing branch value');
         return {
             branch: this.branch,
             draft: this.draft,
             reviewers: this.reviewers,
+            labels: this.labels,
+            commit: this.commit,
+            issue: this.issue,
         };
     }
 }
@@ -2325,5 +2327,6 @@ module.exports = (async function () {
     console.clear();
     const client = await createAPIClient();
     const builder = new PRBuilder(client);
-    await builder.run();
+    const info = await builder.run();
+    console.log(info);
 })();

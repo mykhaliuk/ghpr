@@ -6,5 +6,6 @@ module.exports = (async function () {
   const client = await createAPIClient()
   const builder = new PRBuilder(client)
 
-  await builder.run()
+  const info = await builder.run()
+  console.log(info)
 })()

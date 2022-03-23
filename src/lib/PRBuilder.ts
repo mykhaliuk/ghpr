@@ -10,6 +10,11 @@ prompt.registerPrompt('autocomplete', autocomplete)
 
 export interface PRInfo {
   branch: string
+  draft: boolean
+  reviewers: string[]
+  labels: string[]
+  commit?: string
+  issue: Issue | null
 }
 
 export class PRBuilder {
@@ -18,7 +23,7 @@ export class PRBuilder {
   private reviewers: string[] = []
   private labels: string[] = []
   private draft: boolean = false
-  private commit: string = ''
+  private commit: string | undefined
 
   constructor(private api: APIClient) {}
 
@@ -186,7 +191,7 @@ export class PRBuilder {
     return draft
   }
 
-  async run(): Promise<void> {
+  async run(): Promise<PRInfo> {
     this.issue = await withTempLine('Search current issue...', async () =>
       this.api.getTrackerIssue(),
     )
@@ -219,15 +224,18 @@ export class PRBuilder {
     this.writeReviewers()
     this.writeDraft()
     this.writeLabels()
+
+    return this.build()
   }
 
-  build() {
-    if (!this.branch) throw new Error('missing branch value')
-
+  private build(): PRInfo {
     return {
-      branch: this.branch,
+      branch: this.branch!,
       draft: this.draft,
       reviewers: this.reviewers,
+      labels: this.labels,
+      commit: this.commit,
+      issue: this.issue,
     }
   }
 }
