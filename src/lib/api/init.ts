@@ -6,7 +6,7 @@ import { Question, prompt } from 'inquirer'
 
 import { exec, line } from '../utils'
 import { APIClient } from './client'
-import { APIConfig, TrackerApp, TrackerInfo } from './interfaces'
+import { APIConfig, IAPIClient, TrackerApp, TrackerInfo } from './interfaces'
 
 type PromptAPIConfig = {
   login: string
@@ -152,7 +152,7 @@ export async function getAPIConfig(): Promise<APIConfig> {
   return { ...config, repo, owner }
 }
 
-export async function createAPIClient() {
+export async function createAPIClient(): Promise<IAPIClient> {
   const config = await getAPIConfig()
 
   return new APIClient(config)

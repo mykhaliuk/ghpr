@@ -1,11 +1,12 @@
 import { Octokit } from '@octokit/core'
 
-import { exec } from '../utils'
+import { deleteLastLine, exec, spawn, tempLine } from '../utils'
 import {
   APIConfig,
   Collaborator,
   IAPIClient,
   Issue,
+  PRInfo,
   TrackerInfo,
 } from './interfaces'
 import { TrackerFactory } from './tracker/index'
@@ -19,6 +20,10 @@ export class APIClient implements IAPIClient {
     const { token } = this.config
 
     this.ok = new Octokit({ auth: token })
+  }
+
+  get login() {
+    return this.config.login
   }
 
   get owner() {
@@ -41,12 +46,12 @@ export class APIClient implements IAPIClient {
     return (data || 'main').split('\n').filter(Boolean)
   }
 
-  public async getFirstCommit(base: string): Promise<string> {
+  public async getCommits(base: string): Promise<string[]> {
     const data = await exec(
-      `git cherry ${base} -v | head -n 1 | sed -E "s/(\\+|-) [^ ]+ //"`,
+      `git cherry ${base} -v | sed -E "s/(\\+|-) [^ ]+ //"`,
     )
 
-    return data.replace(/\n/g, '')
+    return data.split('\n').filter(Boolean)
   }
 
   public async getCollabs(): Promise<Collaborator[]> {
@@ -83,5 +88,49 @@ export class APIClient implements IAPIClient {
     const issue = await trackerAPI.getActiveIssue()
 
     return issue
+  }
+
+  public async publishPR(info: PRInfo) {
+    console.clear()
+
+    tempLine('Creating pull request...')
+    const { commits, issue, draft, reviewers, labels, branch } = info
+
+    const [firstCommit = ''] = commits
+
+    let body = `${firstCommit}\n\n`
+    if (issue) {
+      body += `**Related to issue:**\n${
+        issue.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ' \n\n'
+      }`
+    }
+    body += `## Changelog:\n\n`
+    if (commits.length > 0) {
+      body += `- ${commits.join('\n- ')}\n\n`
+    }
+
+    const draftOption = draft ? '-d' : ''
+
+    const command = [
+      'hub',
+      'pull-request',
+      draftOption,
+      '-p -f',
+      `-a ${this.login}`,
+      `-r "${reviewers.join(',')}"`,
+      `-l "${labels.join(',')}"`,
+      `-b "${branch}"`,
+      `-m "${body}"`,
+      '--edit',
+    ]
+
+    let progressStringRemoved = false
+    await spawn(command.join(' '), (data) => {
+      if (!progressStringRemoved) {
+        deleteLastLine()
+        progressStringRemoved = true
+      }
+      process.stdout.write(data)
+    })
   }
 }

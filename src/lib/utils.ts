@@ -46,6 +46,22 @@ export const exec = async (command: string): Promise<string> => {
   return stdout
 }
 
+export const spawn = async (
+  command: string,
+  onData: (data: string) => void,
+): Promise<void> => {
+  const childProcess = cp.spawn(command, { shell: true })
+  process.stdin.pipe(childProcess.stdin)
+
+  for await (const data of childProcess.stdout) {
+    onData(data)
+  }
+
+  for await (const data of childProcess.stderr) {
+    onData(data)
+  }
+}
+
 export type HttpsResponse<T = any> = {
   data: T
   response: {

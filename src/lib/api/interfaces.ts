@@ -4,6 +4,15 @@ export type Issue = {
   number: number
 }
 
+export interface PRInfo {
+  branch: string
+  draft: boolean
+  reviewers: string[]
+  labels: string[]
+  commits: string[]
+  issue: Issue | null
+}
+
 export type TrackerApp = 'everhour' // | 'toggl'
 
 export type TrackerInfo = {
@@ -63,4 +72,6 @@ export interface IAPIClient {
   getLabels(): Promise<Label[]>
   getBranches(): Promise<string[]>
   getTrackerIssue(): Promise<Issue | null>
+  getCommits(base: string): Promise<string[]>
+  publishPR(info: PRInfo): Promise<void>
 }

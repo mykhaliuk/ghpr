@@ -2,20 +2,10 @@ import chalk from 'chalk'
 import { prompt } from 'inquirer'
 import autocomplete from 'inquirer-autocomplete-prompt'
 
-import { Issue } from './api'
-import { APIClient } from './api/client'
+import { IAPIClient, Issue, PRInfo } from './api'
 import { withTempLine } from './utils'
 
 prompt.registerPrompt('autocomplete', autocomplete)
-
-export interface PRInfo {
-  branch: string
-  draft: boolean
-  reviewers: string[]
-  labels: string[]
-  commit?: string
-  issue: Issue | null
-}
 
 export class PRBuilder {
   private branch: string | undefined
@@ -23,16 +13,17 @@ export class PRBuilder {
   private reviewers: string[] = []
   private labels: string[] = []
   private draft: boolean = false
-  private commit: string | undefined
+  private commits: string[] = []
 
-  constructor(private api: APIClient) {}
+  constructor(private api: IAPIClient) {}
 
   private write(icon: string, title: string, data: string) {
     process.stdout.write(`${icon} ${chalk.bold(`${title}:`)} ${data}\n`)
   }
 
   private writeFirstCommit() {
-    this.write('🚚', 'Title:', this.commit || '')
+    const [firstCommit = ''] = this.commits
+    this.write('🚚', 'Title:', firstCommit)
   }
 
   private writeIssue() {
@@ -172,8 +163,8 @@ export class PRBuilder {
 
     this.writeIssue()
     this.branch = await this.promptBranch()
-    this.commit = await withTempLine('Retrieve first commit', async () =>
-      this.api.getFirstCommit(this.branch!),
+    this.commits = await withTempLine('Retrieve first commit', async () =>
+      this.api.getCommits(this.branch!),
     )
 
     this.writeFirstCommit()
@@ -208,7 +199,7 @@ export class PRBuilder {
       draft: this.draft,
       reviewers: this.reviewers,
       labels: this.labels,
-      commit: this.commit,
+      commits: this.commits,
       issue: this.issue,
     }
   }

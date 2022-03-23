@@ -1915,6 +1915,16 @@ const exec = async (command) => {
         throw new Error(stderr);
     return stdout;
 };
+const spawn = async (command, onData) => {
+    const childProcess = cp__default["default"].spawn(command, { shell: true });
+    process.stdin.pipe(childProcess.stdin);
+    for await (const data of childProcess.stdout) {
+        onData(data);
+    }
+    for await (const data of childProcess.stderr) {
+        onData(data);
+    }
+};
 const request = async (options) => {
     return new Promise((resolve, reject) => {
         const req = https__default["default"].request(options, (res) => {
@@ -1986,6 +1996,9 @@ class APIClient {
         const { token } = this.config;
         this.ok = new core.Octokit({ auth: token });
     }
+    get login() {
+        return this.config.login;
+    }
     get owner() {
         return this.config.owner;
     }
@@ -1999,9 +2012,9 @@ class APIClient {
         const data = await exec(`git branch -l | grep -v "*" | grep -v "/" | sed -E "s/^ +//"`);
         return (data || 'main').split('\n').filter(Boolean);
     }
-    async getFirstCommit(base) {
-        const data = await exec(`git cherry ${base} -v | head -n 1 | sed -E "s/(\\+|-) [^ ]+ //"`);
-        return data.replace(/\n/g, '');
+    async getCommits(base) {
+        const data = await exec(`git cherry ${base} -v | sed -E "s/(\\+|-) [^ ]+ //"`);
+        return data.split('\n').filter(Boolean);
     }
     async getCollabs() {
         const collabs = await this.ok.request('GET /repos/{owner}/{repo}/collaborators', {
@@ -2028,6 +2041,41 @@ class APIClient {
         const trackerAPI = TrackerFactory.create(trackerInfo.app, trackerInfo.token);
         const issue = await trackerAPI.getActiveIssue();
         return issue;
+    }
+    async publishPR(info) {
+        console.clear();
+        tempLine('Creating pull request...');
+        const { commits, issue, draft, reviewers, labels, branch } = info;
+        const [firstCommit = ''] = commits;
+        let body = `${firstCommit}\n\n`;
+        if (issue) {
+            body += `**Related to issue:**\n${issue.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ' \n\n'}`;
+        }
+        body += `## Changelog:\n\n`;
+        if (commits.length > 0) {
+            body += `- ${commits.join('\n- ')}\n\n`;
+        }
+        const draftOption = draft ? '-d' : '';
+        const command = [
+            'hub',
+            'pull-request',
+            draftOption,
+            '-p -f',
+            `-a ${this.login}`,
+            `-r "${reviewers.join(',')}"`,
+            `-l "${labels.join(',')}"`,
+            `-b "${branch}"`,
+            `-m "${body}"`,
+            '--edit',
+        ];
+        let progressStringRemoved = false;
+        await spawn(command.join(' '), (data) => {
+            if (!progressStringRemoved) {
+                deleteLastLine();
+                progressStringRemoved = true;
+            }
+            process.stdout.write(data);
+        });
     }
 }
 
@@ -2148,7 +2196,7 @@ class PRBuilder {
     reviewers = [];
     labels = [];
     draft = false;
-    commit;
+    commits = [];
     constructor(api) {
         this.api = api;
     }
@@ -2156,7 +2204,8 @@ class PRBuilder {
         process.stdout.write(`${icon} ${source.bold(`${title}:`)} ${data}\n`);
     }
     writeFirstCommit() {
-        this.write('🚚', 'Title:', this.commit || '');
+        const [firstCommit = ''] = this.commits;
+        this.write('🚚', 'Title:', firstCommit);
     }
     writeIssue() {
         this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
@@ -2256,7 +2305,7 @@ class PRBuilder {
         this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
         this.writeIssue();
         this.branch = await this.promptBranch();
-        this.commit = await withTempLine('Retrieve first commit', async () => this.api.getFirstCommit(this.branch));
+        this.commits = await withTempLine('Retrieve first commit', async () => this.api.getCommits(this.branch));
         this.writeFirstCommit();
         this.reviewers = await this.promptReviewers();
         console.clear();
@@ -2281,7 +2330,7 @@ class PRBuilder {
             draft: this.draft,
             reviewers: this.reviewers,
             labels: this.labels,
-            commit: this.commit,
+            commits: this.commits,
             issue: this.issue,
         };
     }
@@ -2292,5 +2341,5 @@ module.exports = (async function () {
     const client = await createAPIClient();
     const builder = new PRBuilder(client);
     const info = await builder.run();
-    console.log(info);
+    await client.publishPR(info);
 })();

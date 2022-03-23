@@ -7,5 +7,5 @@ module.exports = (async function () {
   const builder = new PRBuilder(client)
 
   const info = await builder.run()
-  console.log(info)
+  await client.publishPR(info)
 })()
