@@ -4,3 +4,4 @@ node_modules
 .env.local
 build
 .idea
+dist
