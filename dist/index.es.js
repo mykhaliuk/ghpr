@@ -1886,7 +1886,8 @@ var source = chalk;
 function normalize(string) {
     if (!string)
         return string;
-    return string.trim().replaceAll('"', '\\"');
+    const expr = new RegExp(/"/gm);
+    return string.trim().replace(expr, '\\"');
 }
 const deleteLastLine = () => process.stdout.write('\r\x1b[K');
 const tempLine = (message) => {

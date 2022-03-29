@@ -6,8 +6,9 @@ import chalk from 'chalk';
 
 export function normalize(string: string) {
   if (!string) return string;
+  const expr = new RegExp(/"/gm);
 
-  return string.trim().replaceAll('"', '\\"');
+  return string.trim().replace(expr, '\\"');
 }
 
 export function throwError(error?: string, code = 1) {
