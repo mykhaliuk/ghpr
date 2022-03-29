@@ -1894,6 +1894,11 @@ chalk.stderr.supportsColor = stderrColor;
 
 var source = chalk;
 
+function normalize(string) {
+    if (!string)
+        return string;
+    return string.trim().replaceAll('"', '\\"');
+}
 const deleteLastLine = () => process.stdout.write('\r\x1b[K');
 const tempLine = (message) => {
     process.stdout.write(source.italic.gray(`${message}`));
@@ -2049,7 +2054,7 @@ class APIClient {
         const [firstCommit = ''] = commits;
         let body = `${firstCommit}\n\n`;
         if (issue) {
-            body += `**Related to issue:**\n${issue.url ? '[' + issue.name + '](' + issue.url + ')\n\n' : ' \n\n'}`;
+            body += `**Related to issue:**\n${issue.url ? `[${issue.name}](${issue.url})\n\n` : ' \n\n'}`;
         }
         body += `## Changelog:\n\n`;
         if (commits.length > 0) {
@@ -2064,8 +2069,8 @@ class APIClient {
             `-a ${this.login}`,
             `-r "${reviewers.join(',')}"`,
             `-l "${labels.join(',')}"`,
-            `-b "${branch}"`,
-            `-m "${body}"`,
+            `-b "${normalize(branch)}"`,
+            `-m "${normalize(body)}"`,
             '--edit',
         ];
         let progressStringRemoved = false;
@@ -2240,7 +2245,7 @@ class PRBuilder {
         return branch;
     }
     async promptAutoComplete(values, mapper) {
-        const doneToken = '--done--';
+        const doneToken = '-- done --';
         let filteredValues = values.map(mapper);
         let results = new Set();
         while (true) {
