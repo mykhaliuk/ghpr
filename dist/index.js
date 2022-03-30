@@ -2230,22 +2230,11 @@ class PRBuilder {
     }
     async promptBranch() {
         const branches = await this.api.getBranches();
-        const { branch } = await inquirer.prompt([
-            {
-                name: 'branch',
-                message: 'Branch',
-                prefix: '🌿',
-                type: 'list',
-                choices: branches,
-                validate: (value) => {
-                    if (!value)
-                        return 'Please select a branch';
-                },
-            },
-        ]);
+        this.writeBranch();
+        const [branch] = await this.promptAutoComplete(branches, (branch) => branch, 1, false);
         return branch;
     }
-    async promptAutoComplete(values, mapper) {
+    async promptAutoComplete(values, mapper, maxSelect = -1, stopOption = true) {
         const doneToken = '-- done --';
         let filteredValues = values.map(mapper);
         let results = new Set();
@@ -2258,7 +2247,7 @@ class PRBuilder {
                     type: 'autocomplete',
                     source: (_, input) => Promise.resolve(filteredValues.flatMap((value, idx) => {
                         let stopValue = [];
-                        if (idx === 0 && !input)
+                        if (idx === 0 && !input && stopOption)
                             stopValue.push(doneToken);
                         if (results.has(value))
                             return stopValue;
@@ -2278,6 +2267,8 @@ class PRBuilder {
                 break;
             value = value.replace(/^\d+\. /, '');
             results.add(value);
+            if (results.size >= maxSelect)
+                break;
             if (filteredValues.length - results.size === 0)
                 break;
         }
@@ -2311,6 +2302,9 @@ class PRBuilder {
         this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
         this.writeIssue();
         this.branch = await this.promptBranch();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
         this.commits = await withTempLine('Retrieve first commit', async () => this.api.getCommits(this.branch));
         this.writeFirstCommit();
         this.reviewers = await this.promptReviewers();
