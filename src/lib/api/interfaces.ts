@@ -1,3 +1,4 @@
+import { Recent, RecentListItem } from './recent/interface'
 export type Issue = {
   url: string
   name: string
@@ -20,11 +21,20 @@ export type TrackerInfo = {
   token: string
 }
 
+export type RecentsConfig = {
+  branches: Recent[]
+  reviewers: Recent[]
+  labels: Recent[]
+}
+
+export type RecentsKeys = keyof RecentsConfig
+
 export type APIConfig = {
   login: string
   token: string
   repo: string
   owner: string
+  recents: RecentsConfig
   tracker?: TrackerInfo
 }
 
@@ -74,4 +84,7 @@ export interface IAPIClient {
   getTrackerIssue(): Promise<Issue | null>
   getCommits(base: string): Promise<string[]>
   publishPR(info: PRInfo): Promise<void>
+
+  withRecents(key: RecentsKeys, list: string[]): RecentListItem[]
+  updateRecent(key: RecentsKeys, values: string[]): Recent[]
 }
