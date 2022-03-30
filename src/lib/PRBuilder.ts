@@ -48,18 +48,13 @@ export class PRBuilder {
   private async promptBranch(): Promise<string> {
     const branches = await this.api.getBranches();
 
-    const { branch } = await prompt([
-      {
-        name: 'branch',
-        message: 'Branch',
-        prefix: '🌿',
-        type: 'list',
-        choices: branches,
-        validate: (value: string) => {
-          if (!value) return 'Please select a branch';
-        },
-      },
-    ]);
+    this.writeBranch();
+    const [branch] = await this.promptAutoComplete(
+      branches,
+      (branch) => branch,
+      1,
+      false,
+    );
 
     return branch;
   }
@@ -67,6 +62,8 @@ export class PRBuilder {
   private async promptAutoComplete<T>(
     values: T[],
     mapper: (value: T) => string,
+    maxSelect = -1,
+    stopOption: boolean = true,
   ) {
     const doneToken = '-- done --';
     let filteredValues = values.map(mapper);
@@ -83,7 +80,8 @@ export class PRBuilder {
             Promise.resolve(
               filteredValues.flatMap((value, idx) => {
                 let stopValue = [];
-                if (idx === 0 && !input) stopValue.push(doneToken);
+                if (idx === 0 && !input && stopOption)
+                  stopValue.push(doneToken);
 
                 if (results.has(value)) return stopValue;
 
@@ -107,6 +105,8 @@ export class PRBuilder {
 
       value = value.replace(/^\d+\. /, '');
       results.add(value);
+
+      if (results.size >= maxSelect) break;
 
       if (filteredValues.length - results.size === 0) break;
     }
@@ -162,8 +162,13 @@ export class PRBuilder {
     );
 
     this.writeIssue();
-
     this.branch = await this.promptBranch();
+
+    console.clear();
+
+    this.writeIssue();
+    this.writeBranch();
+
     this.commits = await withTempLine('Retrieve first commit', async () =>
       this.api.getCommits(this.branch!),
     );
