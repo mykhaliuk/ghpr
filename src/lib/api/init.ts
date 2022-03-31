@@ -7,6 +7,8 @@ import { Question, prompt } from 'inquirer'
 import { exec, line } from '../utils'
 import { APIClient } from './client'
 import { APIConfig, IAPIClient, TrackerApp, TrackerInfo } from './interfaces'
+import { parseRecents } from './recent'
+import { SerializedRecent } from './recent/interface'
 
 type PromptAPIConfig = {
   login: string
@@ -14,7 +16,13 @@ type PromptAPIConfig = {
   trackerName: TrackerApp
 }
 
-type StoredAPIConfig = Omit<APIConfig, 'repo' | 'owner'>
+type StoredAPIConfig = Omit<APIConfig, 'repo' | 'owner' | 'recents'> & {
+  recents: {
+    branches: SerializedRecent[]
+    reviewers: SerializedRecent[]
+    labels: SerializedRecent[]
+  }
+}
 
 type RepoInfo = {
   repo: string
@@ -34,11 +42,22 @@ async function parseRepoData(): Promise<RepoInfo> {
   return { repo, owner }
 }
 
-export async function getAPIConfig(): Promise<APIConfig> {
+export function getConfigPath() {
   const configName = '.ghprrc'
   const homedir = require('os').homedir()
 
-  const configPath = join(homedir, configName)
+  return join(homedir, configName)
+}
+
+export function saveConfig(config: APIConfig) {
+  const path = getConfigPath()
+  const configData = JSON.stringify(config)
+
+  writeFileSync(path, configData)
+}
+
+export async function getAPIConfig(): Promise<APIConfig> {
+  const configPath = getConfigPath()
   const { repo, owner } = await parseRepoData()
 
   if (existsSync(configPath)) {
@@ -47,7 +66,16 @@ export async function getAPIConfig(): Promise<APIConfig> {
 
       const config = JSON.parse(configData.toString()) as StoredAPIConfig
 
-      return { ...config, repo, owner }
+      return {
+        ...config,
+        repo,
+        owner,
+        recents: {
+          branches: parseRecents(config.recents?.branches || []),
+          reviewers: parseRecents(config.recents?.reviewers || []),
+          labels: parseRecents(config.recents?.labels || []),
+        },
+      }
     } catch (err) {
       throw new Error('Unable to parse config file')
     }
@@ -133,6 +161,11 @@ export async function getAPIConfig(): Promise<APIConfig> {
     token,
     login,
     tracker,
+    recents: {
+      branches: [],
+      reviewers: [],
+      labels: [],
+    },
   }
   const configData = JSON.stringify(config)
 
@@ -149,7 +182,16 @@ export async function getAPIConfig(): Promise<APIConfig> {
     process.exit(0)
   }
 
-  return { ...config, repo, owner }
+  return {
+    ...config,
+    repo,
+    owner,
+    recents: {
+      branches: [],
+      reviewers: [],
+      labels: [],
+    },
+  }
 }
 
 export async function createAPIClient(): Promise<IAPIClient> {

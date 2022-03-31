@@ -6,7 +6,7 @@ import https from 'https';
 import util$1 from 'util';
 import os from 'os';
 import tty from 'tty';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { prompt } from 'inquirer';
 import autocomplete from 'inquirer-autocomplete-prompt';
@@ -1910,8 +1910,14 @@ const exec = async (command) => {
         throw new Error(stderr);
     return stdout;
 };
-const spawn = async (command, onData) => {
-    const childProcess = cp.spawn(command, { shell: true });
+const spawn = async (command, onData, env = {}) => {
+    const childProcess = cp.spawn(command, {
+        shell: true,
+        env: {
+            ...process.env,
+            ...env,
+        },
+    });
     process.stdin.pipe(childProcess.stdin);
     for await (const data of childProcess.stdout) {
         onData(data);
@@ -1946,6 +1952,168 @@ const request = async (options) => {
         req.write('');
     });
 };
+
+function parseRecents(recents) {
+    return recents.map((r) => ({ value: r.value, date: new Date(r.date) }));
+}
+function updateRecents(recents, values, maxSize = 10) {
+    const sortedValues = new Set([...values].sort((a, b) => a.localeCompare(b)).slice(0, maxSize));
+    const date = new Date();
+    const removedRecents = recents.filter((r) => !sortedValues.has(r.value));
+    removedRecents.unshift(...Array.from(sortedValues.values()).map((value) => ({
+        value,
+        date,
+    })));
+    return removedRecents.slice(0, maxSize);
+}
+function buildRecentList(recents, list) {
+    const set = new Set(recents.map((r) => r.value));
+    const items = [
+        ...Array.from(set).map((v) => ({ value: v, isRecent: true })),
+        ...list.flatMap((v) => (set.has(v) ? [] : [{ value: v, isRecent: false }])),
+    ];
+    return items;
+}
+
+async function parseRepoData() {
+    const data = await exec('git config --get remote.origin.url');
+    // git@github.com:mykhaliuk/ghpr.git
+    const { 1: or } = data.split(':');
+    // mykhaliuk/ghpr.git
+    const { 0: owner, 1: repoGit } = or.split('/');
+    // ghpr.git
+    const repo = repoGit.slice(0, -5);
+    // ghpr
+    return { repo, owner };
+}
+function getConfigPath() {
+    const configName = '.ghprrc';
+    const homedir = require('os').homedir();
+    return join(homedir, configName);
+}
+function saveConfig(config) {
+    const path = getConfigPath();
+    const configData = JSON.stringify(config);
+    writeFileSync(path, configData);
+}
+async function getAPIConfig() {
+    const configPath = getConfigPath();
+    const { repo, owner } = await parseRepoData();
+    if (existsSync(configPath)) {
+        try {
+            const configData = readFileSync(configPath);
+            const config = JSON.parse(configData.toString());
+            return {
+                ...config,
+                repo,
+                owner,
+                recents: {
+                    branches: parseRecents(config.recents?.branches || []),
+                    reviewers: parseRecents(config.recents?.reviewers || []),
+                    labels: parseRecents(config.recents?.labels || []),
+                },
+            };
+        }
+        catch (err) {
+            throw new Error('Unable to parse config file');
+        }
+    }
+    line('Initializing...');
+    const { GITHUB_TOKEN, GH_TOKEN } = process.env;
+    const ghtoken = GITHUB_TOKEN || GH_TOKEN || '';
+    const prompts = [];
+    if (!ghtoken) {
+        prompts.push({
+            name: 'token',
+            prefix: '🐙',
+            message: 'Enter your GitHub TOKEN please:',
+            type: 'input',
+            validate(login) {
+                if (!login)
+                    return source.red.bold("I can't leave w/out Github Token 🥺");
+                return true;
+            },
+        });
+    }
+    prompts.push({
+        name: 'login',
+        prefix: '🤓',
+        message: 'Enter your GitHub LOGIN please:',
+        type: 'input',
+        validate(login) {
+            if (!login)
+                return source.red.bold("I can't leave w/out login 🥺");
+            return true;
+        },
+    });
+    prompts.push({
+        name: 'trackerName',
+        message: 'Use a tracker ?',
+        prefix: '⏰',
+        type: 'list',
+        choices: [
+            { name: 'everhour', value: 'everhour' },
+            // { name: 'toggl', value: 'toggl' },
+            { name: 'no thanks', value: '' },
+        ],
+    });
+    const { login, token = ghtoken, trackerName, } = await prompt(prompts);
+    let tracker = undefined;
+    if (trackerName) {
+        const { trackerToken } = await prompt([
+            {
+                name: 'trackerToken',
+                message: `Enter your ${trackerName} token please:`,
+                type: 'input',
+                prefix: '⏰',
+                validate(trackerToken) {
+                    if (!trackerToken)
+                        return source.red.bold("I can't leave w/out providing a token for the time tracker 🥺");
+                    return true;
+                },
+            },
+        ]);
+        tracker = {
+            app: trackerName,
+            token: trackerToken,
+        };
+    }
+    const config = {
+        token,
+        login,
+        tracker,
+        recents: {
+            branches: [],
+            reviewers: [],
+            labels: [],
+        },
+    };
+    const configData = JSON.stringify(config);
+    writeFileSync(configPath, configData);
+    process.stdout.write(source.magentaBright('\nConfig saved to ~/.ghprrc\n'));
+    const { confirm } = await prompt({
+        name: 'confirm',
+        type: 'confirm',
+        message: 'Continue creating your Pull Request ?',
+    });
+    if (!confirm) {
+        process.exit(0);
+    }
+    return {
+        ...config,
+        repo,
+        owner,
+        recents: {
+            branches: [],
+            reviewers: [],
+            labels: [],
+        },
+    };
+}
+async function createAPIClient() {
+    const config = await getAPIConfig();
+    return new APIClient(config);
+}
 
 class Everhour {
     apiKey;
@@ -2020,6 +2188,21 @@ class APIClient {
         });
         return collabs.data;
     }
+    getRecent(key) {
+        return this.config.recents[key];
+    }
+    withRecents(key, list) {
+        return buildRecentList(this.getRecent(key), list);
+    }
+    updateRecent(key, values) {
+        const newList = updateRecents(this.config.recents[key], values, 10);
+        this.config.recents[key] = newList;
+        this.saveConfig();
+        return newList;
+    }
+    saveConfig() {
+        saveConfig(this.config);
+    }
     async getLabels() {
         const labels = await this.ok.request('GET /repos/{owner}/{repo}/labels', {
             owner: this.owner,
@@ -2044,7 +2227,7 @@ class APIClient {
         const [firstCommit = ''] = commits;
         let body = `${firstCommit}\n\n`;
         if (issue) {
-            body += `**Related to issue:**\n${issue.url ? `[${issue.name}](${issue.url})\n\n` : ' \n\n'}`;
+            body += `**Related to issue:** ${`[${issue.name} #${issue.number}](${issue.url})\n\n`}`;
         }
         body += `## Changelog:\n\n`;
         if (commits.length > 0) {
@@ -2070,117 +2253,10 @@ class APIClient {
                 progressStringRemoved = true;
             }
             process.stdout.write(data);
+        }, {
+            GITHUB_TOKEN: this.config.token,
         });
     }
-}
-
-async function parseRepoData() {
-    const data = await exec('git config --get remote.origin.url');
-    // git@github.com:mykhaliuk/ghpr.git
-    const { 1: or } = data.split(':');
-    // mykhaliuk/ghpr.git
-    const { 0: owner, 1: repoGit } = or.split('/');
-    // ghpr.git
-    const repo = repoGit.slice(0, -5);
-    // ghpr
-    return { repo, owner };
-}
-async function getAPIConfig() {
-    const configName = '.ghprrc';
-    const homedir = require('os').homedir();
-    const configPath = join(homedir, configName);
-    const { repo, owner } = await parseRepoData();
-    if (existsSync(configPath)) {
-        try {
-            const configData = readFileSync(configPath);
-            const config = JSON.parse(configData.toString());
-            return { ...config, repo, owner };
-        }
-        catch (err) {
-            throw new Error('Unable to parse config file');
-        }
-    }
-    line('Initializing...');
-    const { GITHUB_TOKEN, GH_TOKEN } = process.env;
-    const ghtoken = GITHUB_TOKEN || GH_TOKEN || '';
-    const prompts = [];
-    if (!ghtoken) {
-        prompts.push({
-            name: 'token',
-            prefix: '🐙',
-            message: 'Enter your GitHub TOKEN please:',
-            type: 'input',
-            validate(login) {
-                if (!login)
-                    return source.red.bold("I can't leave w/out Github Token 🥺");
-                return true;
-            },
-        });
-    }
-    prompts.push({
-        name: 'login',
-        prefix: '🤓',
-        message: 'Enter your GitHub LOGIN please:',
-        type: 'input',
-        validate(login) {
-            if (!login)
-                return source.red.bold("I can't leave w/out login 🥺");
-            return true;
-        },
-    });
-    prompts.push({
-        name: 'trackerName',
-        message: 'Use a tracker ?',
-        prefix: '⏰',
-        type: 'list',
-        choices: [
-            { name: 'everhour', value: 'everhour' },
-            // { name: 'toggl', value: 'toggl' },
-            { name: 'no thanks', value: '' },
-        ],
-    });
-    const { login, token = ghtoken, trackerName, } = await prompt(prompts);
-    let tracker = undefined;
-    if (trackerName) {
-        const { trackerToken } = await prompt([
-            {
-                name: 'trackerToken',
-                message: `Enter your ${trackerName} token please:`,
-                type: 'input',
-                prefix: '⏰',
-                validate(trackerToken) {
-                    if (!trackerToken)
-                        return source.red.bold("I can't leave w/out providing a token for the time tracker 🥺");
-                    return true;
-                },
-            },
-        ]);
-        tracker = {
-            app: trackerName,
-            token: trackerToken,
-        };
-    }
-    const config = {
-        token,
-        login,
-        tracker,
-    };
-    const configData = JSON.stringify(config);
-    writeFileSync(configPath, configData);
-    process.stdout.write(source.magentaBright('\nConfig saved to ~/.ghprrc\n'));
-    const { confirm } = await prompt({
-        name: 'confirm',
-        type: 'confirm',
-        message: 'Continue creating your Pull Request ?',
-    });
-    if (!confirm) {
-        process.exit(0);
-    }
-    return { ...config, repo, owner };
-}
-async function createAPIClient() {
-    const config = await getAPIConfig();
-    return new APIClient(config);
 }
 
 prompt.registerPrompt('autocomplete', autocomplete);
@@ -2219,13 +2295,13 @@ class PRBuilder {
     }
     async promptBranch() {
         const branches = await this.api.getBranches();
-        this.writeBranch();
-        const [branch] = await this.promptAutoComplete(branches, (branch) => branch, 1, false);
+        const list = this.api.withRecents('branches', branches);
+        const [branch] = await this.promptAutoComplete(list, 1, false);
+        this.api.updateRecent('branches', [branch]);
         return branch;
     }
-    async promptAutoComplete(values, mapper, maxSelect = -1, stopOption = true) {
+    async promptAutoComplete(items, maxSelect = -1, stopOption = true) {
         const doneToken = '-- done --';
-        let filteredValues = values.map(mapper);
         let results = new Set();
         while (true) {
             let { value } = await prompt([
@@ -2234,18 +2310,19 @@ class PRBuilder {
                     message: '- ',
                     prefix: '',
                     type: 'autocomplete',
-                    source: (_, input) => Promise.resolve(filteredValues.flatMap((value, idx) => {
+                    source: (_, input) => Promise.resolve(items.flatMap((item, idx) => {
+                        const { value, isRecent } = item;
                         let stopValue = [];
                         if (idx === 0 && !input && stopOption)
                             stopValue.push(doneToken);
                         if (results.has(value))
                             return stopValue;
-                        const name = `${idx + 1}. ${value}`;
+                        const name = `${isRecent ? '🕘' : ` ‣`} ${idx + 1}. ${value}`;
                         if (!input)
                             return [...stopValue, name];
                         const regexpLogin = new RegExp(`${input.toLowerCase()}.*`);
-                        const regexpNum = new RegExp(`${idx}.*`);
-                        return regexpLogin.test(name.toLowerCase()) ||
+                        const regexpNum = new RegExp(`^${idx + 1}.*`);
+                        return regexpLogin.test(value.toLowerCase()) ||
                             regexpNum.test(input)
                             ? [...stopValue, name]
                             : stopValue;
@@ -2254,25 +2331,29 @@ class PRBuilder {
             ]);
             if (value === doneToken)
                 break;
-            value = value.replace(/^\d+\. /, '');
+            value = value.replace(/.+(\d+\.|🕘)\s+/, '');
             results.add(value);
             if (maxSelect > 0 && results.size >= maxSelect)
                 break;
-            if (filteredValues.length - results.size === 0)
+            if (items.length - results.size === 0)
                 break;
         }
         return Array.from(results);
     }
     async promptReviewers() {
         let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
+        const list = this.api.withRecents('reviewers', collabs.map((c) => c.login));
         this.writeReviewers();
-        let reviewers = await this.promptAutoComplete(collabs, (c) => c.login);
+        let reviewers = await this.promptAutoComplete(list);
+        this.api.updateRecent('reviewers', reviewers);
         return reviewers;
     }
     async promptLabels() {
         let gitLabels = await withTempLine('Search for labels', () => this.api.getLabels());
         this.writeLabels();
-        const labels = await this.promptAutoComplete(gitLabels, (l) => l.name);
+        const list = this.api.withRecents('labels', gitLabels.map((l) => l.name));
+        const labels = await this.promptAutoComplete(list);
+        this.api.updateRecent('labels', labels);
         return labels;
     }
     async promptDraft() {

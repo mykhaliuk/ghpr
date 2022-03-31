@@ -1,74 +1,70 @@
-import chalk from 'chalk';
-import { prompt } from 'inquirer';
-import autocomplete from 'inquirer-autocomplete-prompt';
+import chalk from 'chalk'
+import { prompt } from 'inquirer'
+import autocomplete from 'inquirer-autocomplete-prompt'
 
-import { IAPIClient, Issue, PRInfo } from './api';
-import { withTempLine } from './utils';
+import { IAPIClient, Issue, PRInfo } from './api'
+import { RecentListItem } from './api/recent/interface'
+import { withTempLine } from './utils'
 
-prompt.registerPrompt('autocomplete', autocomplete);
+prompt.registerPrompt('autocomplete', autocomplete)
 
 export class PRBuilder {
-  private branch: string | undefined;
-  private issue: Issue | null = null;
-  private reviewers: string[] = [];
-  private labels: string[] = [];
-  private draft: boolean = false;
-  private commits: string[] = [];
+  private branch: string | undefined
+  private issue: Issue | null = null
+  private reviewers: string[] = []
+  private labels: string[] = []
+  private draft: boolean = false
+  private commits: string[] = []
 
   constructor(private api: IAPIClient) {}
 
   private write(icon: string, title: string, data: string) {
-    process.stdout.write(`${icon} ${chalk.bold(`${title}:`)} ${data}\n`);
+    process.stdout.write(`${icon} ${chalk.bold(`${title}:`)} ${data}\n`)
   }
 
   private writeFirstCommit() {
-    const [firstCommit = ''] = this.commits;
-    this.write('🚚', 'Title:', firstCommit);
+    const [firstCommit = ''] = this.commits
+    this.write('🚚', 'Title:', firstCommit)
   }
 
   private writeIssue() {
-    this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
+    this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected')
   }
 
   private writeBranch() {
-    this.write('🌿', 'Branch', this.branch || '');
+    this.write('🌿', 'Branch', this.branch || '')
   }
 
   private writeReviewers() {
-    this.write('🤓', 'Reviewer', this.reviewers.join(', '));
+    this.write('🤓', 'Reviewer', this.reviewers.join(', '))
   }
   private writeDraft() {
-    this.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
+    this.write('📑', 'Draft', this.draft ? 'Yes' : 'No')
   }
 
   private writeLabels() {
-    this.write('🏷 ', 'Labels', this.labels.join(', '));
+    this.write('🏷 ', 'Labels', this.labels.join(', '))
   }
 
   private async promptBranch(): Promise<string> {
-    const branches = await this.api.getBranches();
+    const branches = await this.api.getBranches()
 
-    this.writeBranch();
-    const [branch] = await this.promptAutoComplete(
-      branches,
-      (branch) => branch,
-      1,
-      false,
-    );
+    const list = this.api.withRecents('branches', branches)
+    const [branch] = await this.promptAutoComplete(list, 1, false)
 
-    return branch;
+    this.api.updateRecent('branches', [branch])
+
+    return branch
   }
 
-  private async promptAutoComplete<T>(
-    values: T[],
-    mapper: (value: T) => string,
+  private async promptAutoComplete(
+    items: RecentListItem[],
     maxSelect = -1,
     stopOption: boolean = true,
   ) {
-    const doneToken = '-- done --';
-    let filteredValues = values.map(mapper);
+    const doneToken = '-- done --'
 
-    let results = new Set<string>();
+    let results = new Set<string>()
     while (true) {
       let { value } = await prompt([
         {
@@ -78,68 +74,76 @@ export class PRBuilder {
           type: 'autocomplete',
           source: (_: string, input: string) =>
             Promise.resolve(
-              filteredValues.flatMap((value, idx) => {
-                let stopValue = [];
-                if (idx === 0 && !input && stopOption)
-                  stopValue.push(doneToken);
+              items.flatMap((item, idx) => {
+                const { value, isRecent } = item
+                let stopValue = []
+                if (idx === 0 && !input && stopOption) stopValue.push(doneToken)
 
-                if (results.has(value)) return stopValue;
+                if (results.has(value)) return stopValue
 
-                const name = `${idx + 1}. ${value}`;
+                const name = `${isRecent ? '🕘' : ` ‣`} ${idx + 1}. ${value}`
 
-                if (!input) return [...stopValue, name];
+                if (!input) return [...stopValue, name]
 
-                const regexpLogin = new RegExp(`${input.toLowerCase()}.*`);
-                const regexpNum = new RegExp(`${idx}.*`);
+                const regexpLogin = new RegExp(`${input.toLowerCase()}.*`)
+                const regexpNum = new RegExp(`^${idx + 1}.*`)
 
-                return regexpLogin.test(name.toLowerCase()) ||
+                return regexpLogin.test(value.toLowerCase()) ||
                   regexpNum.test(input)
                   ? [...stopValue, name]
-                  : stopValue;
+                  : stopValue
               }),
             ),
         },
-      ]);
+      ])
 
-      if (value === doneToken) break;
+      if (value === doneToken) break
 
-      value = value.replace(/^\d+\. /, '');
-      results.add(value);
+      value = value.replace(/.+(\d+\.|🕘)\s+/, '')
+      results.add(value)
 
-      if (maxSelect > 0 && results.size >= maxSelect) break;
-
-      if (filteredValues.length - results.size === 0) break;
+      if (maxSelect > 0 && results.size >= maxSelect) break
+      if (items.length - results.size === 0) break
     }
 
-    return Array.from(results);
+    return Array.from(results)
   }
 
   private async promptReviewers(): Promise<string[]> {
     let collabs = await withTempLine('Search for collabs', () =>
       this.api.getCollabs(),
-    );
+    )
 
-    this.writeReviewers();
-    let reviewers: string[] = await this.promptAutoComplete(
-      collabs,
-      (c) => c.login,
-    );
+    const list = this.api.withRecents(
+      'reviewers',
+      collabs.map((c) => c.login),
+    )
 
-    return reviewers;
+    this.writeReviewers()
+    let reviewers: string[] = await this.promptAutoComplete(list)
+
+    this.api.updateRecent('reviewers', reviewers)
+
+    return reviewers
   }
 
   private async promptLabels(): Promise<string[]> {
     let gitLabels = await withTempLine('Search for labels', () =>
       this.api.getLabels(),
-    );
+    )
 
-    this.writeLabels();
-    const labels: string[] = await this.promptAutoComplete(
-      gitLabels,
-      (l) => l.name,
-    );
+    this.writeLabels()
 
-    return labels;
+    const list = this.api.withRecents(
+      'labels',
+      gitLabels.map((l) => l.name),
+    )
+
+    const labels: string[] = await this.promptAutoComplete(list)
+
+    this.api.updateRecent('labels', labels)
+
+    return labels
   }
 
   private async promptDraft(): Promise<boolean> {
@@ -151,52 +155,52 @@ export class PRBuilder {
         type: 'confirm',
         default: false,
       },
-    ]);
+    ])
 
-    return draft;
+    return draft
   }
 
   async run(): Promise<PRInfo> {
     this.issue = await withTempLine('Search current issue...', async () =>
       this.api.getTrackerIssue(),
-    );
+    )
 
-    this.writeIssue();
-    this.branch = await this.promptBranch();
+    this.writeIssue()
+    this.branch = await this.promptBranch()
 
-    console.clear();
+    console.clear()
 
-    this.writeIssue();
-    this.writeBranch();
+    this.writeIssue()
+    this.writeBranch()
 
     this.commits = await withTempLine('Retrieve first commit', async () =>
       this.api.getCommits(this.branch!),
-    );
+    )
 
-    this.writeFirstCommit();
+    this.writeFirstCommit()
 
-    this.reviewers = await this.promptReviewers();
+    this.reviewers = await this.promptReviewers()
 
-    console.clear();
+    console.clear()
 
-    this.writeIssue();
-    this.writeBranch();
-    this.writeFirstCommit();
-    this.writeReviewers();
+    this.writeIssue()
+    this.writeBranch()
+    this.writeFirstCommit()
+    this.writeReviewers()
 
-    this.draft = await this.promptDraft();
-    this.labels = await this.promptLabels();
+    this.draft = await this.promptDraft()
+    this.labels = await this.promptLabels()
 
-    console.clear();
+    console.clear()
 
-    this.writeIssue();
-    this.writeBranch();
-    this.writeFirstCommit();
-    this.writeReviewers();
-    this.writeDraft();
-    this.writeLabels();
+    this.writeIssue()
+    this.writeBranch()
+    this.writeFirstCommit()
+    this.writeReviewers()
+    this.writeDraft()
+    this.writeLabels()
 
-    return this.build();
+    return this.build()
   }
 
   private build(): PRInfo {
@@ -207,6 +211,6 @@ export class PRBuilder {
       labels: this.labels,
       commits: this.commits,
       issue: this.issue,
-    };
+    }
   }
 }
