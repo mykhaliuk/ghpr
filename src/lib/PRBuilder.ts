@@ -106,7 +106,7 @@ export class PRBuilder {
       value = value.replace(/^\d+\. /, '');
       results.add(value);
 
-      if (results.size >= maxSelect) break;
+      if (maxSelect > 0 && results.size >= maxSelect) break;
 
       if (filteredValues.length - results.size === 0) break;
     }
