@@ -148,12 +148,18 @@ export class APIClient implements IAPIClient {
     ]
 
     let progressStringRemoved = false
-    await spawn(command.join(' '), (data) => {
-      if (!progressStringRemoved) {
-        deleteLastLine()
-        progressStringRemoved = true
-      }
-      process.stdout.write(data)
-    })
+    await spawn(
+      command.join(' '),
+      (data) => {
+        if (!progressStringRemoved) {
+          deleteLastLine()
+          progressStringRemoved = true
+        }
+        process.stdout.write(data)
+      },
+      {
+        GITHUB_TOKEN: this.config.token,
+      },
+    )
   }
 }

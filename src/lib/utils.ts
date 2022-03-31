@@ -56,8 +56,15 @@ export const exec = async (command: string): Promise<string> => {
 export const spawn = async (
   command: string,
   onData: (data: string) => void,
+  env: {} = {},
 ): Promise<void> => {
-  const childProcess = cp.spawn(command, { shell: true })
+  const childProcess = cp.spawn(command, {
+    shell: true,
+    env: {
+      ...process.env,
+      ...env,
+    },
+  })
   process.stdin.pipe(childProcess.stdin)
 
   for await (const data of childProcess.stdout) {

@@ -1921,8 +1921,14 @@ const exec = async (command) => {
         throw new Error(stderr);
     return stdout;
 };
-const spawn = async (command, onData) => {
-    const childProcess = cp__default["default"].spawn(command, { shell: true });
+const spawn = async (command, onData, env = {}) => {
+    const childProcess = cp__default["default"].spawn(command, {
+        shell: true,
+        env: {
+            ...process.env,
+            ...env,
+        },
+    });
     process.stdin.pipe(childProcess.stdin);
     for await (const data of childProcess.stdout) {
         onData(data);
@@ -2232,7 +2238,7 @@ class APIClient {
         const [firstCommit = ''] = commits;
         let body = `${firstCommit}\n\n`;
         if (issue) {
-            body += `**Related to issue:**\n${issue.url ? `[${issue.name}](${issue.url})\n\n` : ' \n\n'}`;
+            body += `**Related to issue:** ${`[${issue.name} #${issue.number}](${issue.url})\n\n`}`;
         }
         body += `## Changelog:\n\n`;
         if (commits.length > 0) {
@@ -2258,6 +2264,8 @@ class APIClient {
                 progressStringRemoved = true;
             }
             process.stdout.write(data);
+        }, {
+            GITHUB_TOKEN: this.config.token,
         });
     }
 }
