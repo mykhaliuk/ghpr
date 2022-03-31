@@ -124,9 +124,7 @@ export class APIClient implements IAPIClient {
 
     let body = `${firstCommit}\n\n`
     if (issue) {
-      body += `**Related to issue:**\n${
-        issue.url ? `[${issue.name}](${issue.url})\n\n` : ' \n\n'
-      }`
+      body += `**Related to issue:** ${`[${issue.name} #${issue.number}](${issue.url})\n\n`}`
     }
 
     body += `## Changelog:\n\n`
