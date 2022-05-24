@@ -93,10 +93,6 @@ export class ApiClient implements APIClient {
     return collabs.data as Collaborator[];
   }
 
-  private getRecent(key: RecentKey): Recent[] {
-    return this.cfg.recents[key];
-  }
-
   public withRecent(key: RecentKey, list: string[]): RecentListItem[] {
     return buildRecentList(this.getRecent(key), list);
   }
@@ -107,10 +103,6 @@ export class ApiClient implements APIClient {
 
     this.saveConfig();
     return newList;
-  }
-
-  private saveConfig() {
-    saveConfig(this.cfg);
   }
 
   public async getLabels() {
@@ -133,9 +125,7 @@ export class ApiClient implements APIClient {
       trackerInfo.token,
     );
 
-    const issue = await trackerAPI.getActiveIssue();
-
-    return issue;
+    return trackerAPI.getActiveIssue();
   }
 
   public async getGHIssues(
@@ -199,5 +189,13 @@ export class ApiClient implements APIClient {
         GITHUB_TOKEN: this.cfg.token,
       },
     );
+  }
+
+  private getRecent(key: RecentKey): Recent[] {
+    return this.cfg.recents[key];
+  }
+
+  private saveConfig() {
+    saveConfig(this.cfg);
   }
 }

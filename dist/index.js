@@ -2215,9 +2215,6 @@ class ApiClient {
         });
         return collabs.data;
     }
-    getRecent(key) {
-        return this.cfg.recents[key];
-    }
     withRecent(key, list) {
         return buildRecentList(this.getRecent(key), list);
     }
@@ -2226,9 +2223,6 @@ class ApiClient {
         this.cfg.recents[key] = newList;
         this.saveConfig();
         return newList;
-    }
-    saveConfig() {
-        saveConfig(this.cfg);
     }
     async getLabels() {
         const labels = await this.ok.request('GET /repos/{owner}/{repo}/labels', {
@@ -2244,8 +2238,7 @@ class ApiClient {
         if (!trackerInfo)
             return null;
         const trackerAPI = TrackerFactory.create(trackerInfo.app, trackerInfo.token);
-        const issue = await trackerAPI.getActiveIssue();
-        return issue;
+        return trackerAPI.getActiveIssue();
     }
     async getGHIssues(state) {
         const issues = await this.ok.request('GET /issues', {
@@ -2294,6 +2287,12 @@ class ApiClient {
             GITHUB_TOKEN: this.cfg.token,
         });
     }
+    getRecent(key) {
+        return this.cfg.recents[key];
+    }
+    saveConfig() {
+        saveConfig(this.cfg);
+    }
 }
 
 async function createAPIClient() {
@@ -2327,6 +2326,43 @@ class PRBuilder {
             },
         ]);
         return draft;
+    }
+    async run() {
+        const { tracker } = this.api.config;
+        switch (true) {
+            case tracker?.app === 'everhour':
+                this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
+                this.writeIssue();
+                break;
+            case !tracker?.app:
+            default:
+                this.issue = await this.promptIssue();
+                console.clear();
+                this.writeIssue();
+                this.writeBranch();
+        }
+        this.branch = await this.promptBranch();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.commits = await withTempLine('Retrieve first commit', async () => this.api.getCommits(this.branch));
+        this.writeFirstCommit();
+        this.reviewers = await this.promptReviewers();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeFirstCommit();
+        this.writeReviewers();
+        this.draft = await PRBuilder.promptDraft();
+        this.labels = await this.promptLabels();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeFirstCommit();
+        this.writeReviewers();
+        this.writeDraft();
+        this.writeLabels();
+        return this.build();
     }
     writeFirstCommit() {
         const [firstCommit = ''] = this.commits;
@@ -2422,43 +2458,6 @@ class PRBuilder {
             return null;
         const { url, title, number } = issues.find(({ title }) => choices[0].includes(title));
         return { name: title, url, number };
-    }
-    async run() {
-        const { tracker } = this.api.config;
-        switch (true) {
-            case tracker?.app === 'everhour':
-                this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
-                this.writeIssue();
-                break;
-            case !tracker?.app:
-            default:
-                this.issue = await this.promptIssue();
-                console.clear();
-                this.writeIssue();
-                this.writeBranch();
-        }
-        this.branch = await this.promptBranch();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.commits = await withTempLine('Retrieve first commit', async () => this.api.getCommits(this.branch));
-        this.writeFirstCommit();
-        this.reviewers = await this.promptReviewers();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.writeFirstCommit();
-        this.writeReviewers();
-        this.draft = await PRBuilder.promptDraft();
-        this.labels = await this.promptLabels();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.writeFirstCommit();
-        this.writeReviewers();
-        this.writeDraft();
-        this.writeLabels();
-        return this.build();
     }
     build() {
         return {

@@ -145,6 +145,7 @@ async function parseRepoData(): Promise<RepoInfo> {
 
   // git@github.com:mykhaliuk/ghpr.git
   const { 1: or } = data.split(':');
+
   // mykhaliuk/ghpr.git
   const { 0: owner, 1: repoGit } = or.split('/');
   // ghpr.git
