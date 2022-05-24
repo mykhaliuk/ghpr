@@ -1,8 +1,14 @@
+import chalk from 'chalk';
 import cp from 'child_process';
 import https from 'https';
 import util from 'util';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { prompt, Question } from 'inquirer';
 
-import chalk from 'chalk';
+import { APIConfig, TrackerAppName, TrackerInfo } from './api';
+import { SerializedRecent } from './api/recent/interface';
+import { parseRecent } from './api/recent';
 
 export function normalize(string: string) {
   if (!string) return string;
@@ -117,3 +123,185 @@ export const request = async <T = any>(
     req.write('');
   });
 };
+type PromptAPIConfig = {
+  login: string;
+  token?: string;
+  trackerName: TrackerAppName;
+};
+type StoredAPIConfig = Omit<APIConfig, 'repo' | 'owner' | 'recents'> & {
+  recents: {
+    branches: SerializedRecent[];
+    reviewers: SerializedRecent[];
+    labels: SerializedRecent[];
+  };
+};
+type RepoInfo = {
+  repo: string;
+  owner: string;
+};
+
+async function parseRepoData(): Promise<RepoInfo> {
+  const data = await exec('git config --get remote.origin.url');
+
+  // git@github.com:mykhaliuk/ghpr.git
+  const { 1: or } = data.split(':');
+  // mykhaliuk/ghpr.git
+  const { 0: owner, 1: repoGit } = or.split('/');
+  // ghpr.git
+  const repo = repoGit.slice(0, -5);
+  // ghpr
+  return { repo, owner };
+}
+
+export function getConfigPath() {
+  const configName = '.ghprrc';
+  const homedir = require('os').homedir();
+
+  return join(homedir, configName);
+}
+
+export function saveConfig(config: APIConfig) {
+  const path = getConfigPath();
+  const configData = JSON.stringify(config);
+
+  writeFileSync(path, configData);
+}
+
+export async function getAPIConfig(): Promise<APIConfig> {
+  const configPath = getConfigPath();
+  const { repo, owner } = await parseRepoData();
+
+  if (existsSync(configPath)) {
+    try {
+      const configData = readFileSync(configPath);
+
+      const config = JSON.parse(configData.toString()) as StoredAPIConfig;
+
+      return {
+        ...config,
+        repo,
+        owner,
+        recents: {
+          branches: parseRecent(config.recents?.branches || []),
+          reviewers: parseRecent(config.recents?.reviewers || []),
+          labels: parseRecent(config.recents?.labels || []),
+        },
+      };
+    } catch (err) {
+      throwError('Unable to parse config file');
+    }
+  }
+
+  line('Initializing...');
+
+  const { GITHUB_TOKEN, GH_TOKEN } = process.env;
+  const ghtoken = GITHUB_TOKEN || GH_TOKEN || '';
+
+  const prompts: Question[] = [];
+
+  if (!ghtoken) {
+    prompts.push({
+      name: 'token',
+      prefix: '🐙',
+      message: 'Enter your GitHub TOKEN please:',
+      type: 'input',
+      validate(login: any) {
+        if (!login)
+          return chalk.red.bold("I can't leave w/out Github Token 🥺");
+
+        return true;
+      },
+    });
+  }
+
+  prompts.push({
+    name: 'login',
+    prefix: '🤓',
+    message: 'Enter your GitHub LOGIN please:',
+    type: 'input',
+    validate(login: any) {
+      if (!login) return chalk.red.bold("I can't leave w/out login 🥺");
+
+      return true;
+    },
+  });
+
+  prompts.push({
+    name: 'trackerName',
+    message: 'Use a tracker ?',
+    prefix: '⏰',
+    type: 'list',
+    choices: [
+      { name: 'everhour', value: 'everhour' },
+      // { name: 'toggl', value: 'toggl' },
+      { name: 'no thanks', value: '' },
+    ],
+  } as any);
+
+  const {
+    login,
+    token = ghtoken,
+    trackerName,
+  } = await prompt<PromptAPIConfig>(prompts);
+
+  let tracker: TrackerInfo | undefined = undefined;
+  if (trackerName) {
+    const { trackerToken } = await prompt([
+      {
+        name: 'trackerToken',
+        message: `Enter your ${trackerName} token please:`,
+        type: 'input',
+        prefix: '⏰',
+        validate(trackerToken: any) {
+          if (!trackerToken)
+            return chalk.red.bold(
+              "I can't leave w/out providing a token for the time tracker 🥺",
+            );
+
+          return true;
+        },
+      },
+    ]);
+
+    tracker = {
+      app: trackerName,
+      token: trackerToken,
+    };
+  }
+
+  const config: StoredAPIConfig = {
+    token,
+    login,
+    tracker,
+    recents: {
+      branches: [],
+      reviewers: [],
+      labels: [],
+    },
+  };
+  const configData = JSON.stringify(config);
+
+  writeFileSync(configPath, configData);
+  process.stdout.write(chalk.magentaBright('\nConfig saved to ~/.ghprrc\n'));
+
+  const { confirm } = await prompt({
+    name: 'confirm',
+    type: 'confirm',
+    message: 'Continue creating your Pull Request ?',
+  });
+
+  if (!confirm) {
+    process.exit(0);
+  }
+
+  return {
+    ...config,
+    repo,
+    owner,
+    recents: {
+      branches: [],
+      reviewers: [],
+      labels: [],
+    },
+  };
+}

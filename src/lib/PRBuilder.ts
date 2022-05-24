@@ -18,29 +18,47 @@ export class PRBuilder {
 
   constructor(private api: APIClient) {}
 
-  private write(icon: string, title: string, data: string) {
+  private static write(icon: string, title: string, data: string) {
     process.stdout.write(`${icon} ${chalk.bold(`${title}:`)} ${data}\n`);
+  }
+
+  private static async promptDraft(): Promise<boolean> {
+    const { draft } = await prompt([
+      {
+        name: 'draft',
+        message: 'Draft ?',
+        prefix: '📑',
+        type: 'confirm',
+        default: false,
+      },
+    ]);
+
+    return draft;
   }
 
   private writeFirstCommit() {
     const [firstCommit = ''] = this.commits;
-    this.write('🚚', 'Title:', firstCommit);
+    PRBuilder.write('🚚', 'Title:', firstCommit);
   }
 
   private writeIssue() {
-    this.write('⏰', 'Issue', this.issue?.name ?? '');
+    PRBuilder.write('⏰', 'Issue', this.issue?.name ?? '');
   }
+
   private writeBranch() {
-    this.write('🌿', 'Branch', this.branch ?? '');
+    PRBuilder.write('🌿', 'Branch', this.branch ?? '');
   }
+
   private writeReviewers() {
-    this.write('🤓', 'Reviewer', this.reviewers.join(', '));
+    PRBuilder.write('🤓', 'Reviewer', this.reviewers.join(', '));
   }
+
   private writeDraft() {
-    this.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
+    PRBuilder.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
   }
+
   private writeLabels() {
-    this.write('🏷 ', 'Labels', this.labels.join(', '));
+    PRBuilder.write('🏷 ', 'Labels', this.labels.join(', '));
   }
 
   private async promptBranch(): Promise<string> {
@@ -60,8 +78,8 @@ export class PRBuilder {
     stopOption: boolean = true,
   ) {
     const doneToken = '-- done --';
-
     let results = new Set<string>();
+
     while (true) {
       let { value } = await prompt([
         {
@@ -104,7 +122,7 @@ export class PRBuilder {
       if (items.length - results.size === 0) break;
     }
 
-    return Array.from(results);
+    return [...results];
   }
 
   private async promptReviewers(): Promise<string[]> {
@@ -167,20 +185,6 @@ export class PRBuilder {
     return { name: title, url, number };
   }
 
-  private async promptDraft(): Promise<boolean> {
-    const { draft } = await prompt([
-      {
-        name: 'draft',
-        message: 'Draft ?',
-        prefix: '📑',
-        type: 'confirm',
-        default: false,
-      },
-    ]);
-
-    return draft;
-  }
-
   async run(): Promise<PRInfo> {
     const { tracker } = this.api.config;
 
@@ -222,7 +226,7 @@ export class PRBuilder {
     this.writeFirstCommit();
     this.writeReviewers();
 
-    this.draft = await this.promptDraft();
+    this.draft = await PRBuilder.promptDraft();
     this.labels = await this.promptLabels();
 
     console.clear();

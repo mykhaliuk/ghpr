@@ -16,7 +16,7 @@ export function updateRecent(
   const date = new Date();
   const removedRecent = recent.filter((r) => !sortedValues.has(r.value));
   removedRecent.unshift(
-    ...Array.from(sortedValues.values()).map((value) => ({
+    ...[...sortedValues.values()].map((value) => ({
       value,
       date,
     })),
@@ -33,7 +33,7 @@ export function buildRecentList(
 
   const items: RecentListItem[] = [
     // filter recent that do not exist in current list
-    ...Array.from(set).flatMap((v) =>
+    ...[...set].flatMap((v) =>
       list.includes(v) ? [{ value: v, isRecent: true }] : [],
     ),
     ...list.flatMap((v) => (set.has(v) ? [] : [{ value: v, isRecent: false }])),

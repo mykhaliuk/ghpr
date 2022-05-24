@@ -1,7 +1,5 @@
 import { Octokit } from '@octokit/core';
 
-import { deleteLastLine, exec, normalize, spawn, tempLine } from '../utils';
-import { saveConfig } from './init';
 import {
   APIClient,
   APIConfig,
@@ -14,7 +12,16 @@ import {
 import { RecentKey as RecentKey } from './interfaces';
 import { buildRecentList, updateRecent } from './recent';
 import { Recent, RecentListItem } from './recent/interface';
-import { TrackerFactory } from './tracker/index';
+import { TrackerFactory } from './tracker';
+
+import {
+  deleteLastLine,
+  exec,
+  normalize,
+  saveConfig,
+  spawn,
+  tempLine,
+} from '../utils';
 
 export class ApiClient implements APIClient {
   protected readonly cfg: APIConfig;

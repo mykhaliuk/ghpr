@@ -2,12 +2,14 @@
 
 'use strict';
 
+Object.defineProperty(exports, '__esModule', { value: true });
+
 var core = require('@octokit/core');
+var os = require('os');
+var tty = require('tty');
 var cp = require('child_process');
 var https = require('https');
 var util$1 = require('util');
-var os = require('os');
-var tty = require('tty');
 var fs = require('fs');
 var path = require('path');
 var inquirer = require('inquirer');
@@ -15,12 +17,35 @@ var autocomplete = require('inquirer-autocomplete-prompt');
 
 function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e : { 'default': e }; }
 
+var os__default = /*#__PURE__*/_interopDefaultLegacy(os);
+var tty__default = /*#__PURE__*/_interopDefaultLegacy(tty);
 var cp__default = /*#__PURE__*/_interopDefaultLegacy(cp);
 var https__default = /*#__PURE__*/_interopDefaultLegacy(https);
 var util__default = /*#__PURE__*/_interopDefaultLegacy(util$1);
-var os__default = /*#__PURE__*/_interopDefaultLegacy(os);
-var tty__default = /*#__PURE__*/_interopDefaultLegacy(tty);
 var autocomplete__default = /*#__PURE__*/_interopDefaultLegacy(autocomplete);
+
+function parseRecent(recent) {
+    return recent.map((r) => ({ value: r.value, date: new Date(r.date) }));
+}
+function updateRecent(recent, values, maxSize = 10) {
+    const sortedValues = new Set([...values].sort((a, b) => a.localeCompare(b)).slice(0, maxSize));
+    const date = new Date();
+    const removedRecent = recent.filter((r) => !sortedValues.has(r.value));
+    removedRecent.unshift(...[...sortedValues.values()].map((value) => ({
+        value,
+        date,
+    })));
+    return removedRecent.slice(0, maxSize);
+}
+function buildRecentList(recent, list) {
+    const set = new Set(recent.map(({ value }) => value));
+    const items = [
+        // filter recent that do not exist in current list
+        ...[...set].flatMap((v) => list.includes(v) ? [{ value: v, isRecent: true }] : []),
+        ...list.flatMap((v) => (set.has(v) ? [] : [{ value: v, isRecent: false }])),
+    ];
+    return items;
+}
 
 function createCommonjsModule(fn, module) {
 	return module = { exports: {} }, fn(module, module.exports), module.exports;
@@ -1900,6 +1925,13 @@ function normalize(string) {
     const expr = new RegExp(/"/gm);
     return string.trim().replace(expr, '\\"');
 }
+function throwError(error, code = 1) {
+    if (error) {
+        console.clear();
+        console.log(error);
+        process.exit(code);
+    }
+}
 const deleteLastLine = () => process.stdout.write('\r\x1b[K');
 const tempLine = (message) => {
     process.stdout.write(source.italic.gray(`${message}`));
@@ -1963,30 +1995,6 @@ const request = async (options) => {
         req.write('');
     });
 };
-
-function parseRecent(recent) {
-    return recent.map((r) => ({ value: r.value, date: new Date(r.date) }));
-}
-function updateRecent(recent, values, maxSize = 10) {
-    const sortedValues = new Set([...values].sort((a, b) => a.localeCompare(b)).slice(0, maxSize));
-    const date = new Date();
-    const removedRecent = recent.filter((r) => !sortedValues.has(r.value));
-    removedRecent.unshift(...Array.from(sortedValues.values()).map((value) => ({
-        value,
-        date,
-    })));
-    return removedRecent.slice(0, maxSize);
-}
-function buildRecentList(recent, list) {
-    const set = new Set(recent.map(({ value }) => value));
-    const items = [
-        // filter recent that do not exist in current list
-        ...Array.from(set).flatMap((v) => list.includes(v) ? [{ value: v, isRecent: true }] : []),
-        ...list.flatMap((v) => (set.has(v) ? [] : [{ value: v, isRecent: false }])),
-    ];
-    return items;
-}
-
 async function parseRepoData() {
     const data = await exec('git config --get remote.origin.url');
     // git@github.com:mykhaliuk/ghpr.git
@@ -2027,7 +2035,7 @@ async function getAPIConfig() {
             };
         }
         catch (err) {
-            throw new Error('Unable to parse config file');
+            throwError('Unable to parse config file');
         }
     }
     line('Initializing...');
@@ -2122,10 +2130,6 @@ async function getAPIConfig() {
         },
     };
 }
-async function createAPIClient() {
-    const config = await getAPIConfig();
-    return new ApiClient(config);
-}
 
 class Everhour {
     apiKey;
@@ -2159,7 +2163,7 @@ const TrackerFactory = {
         if (app === 'everhour') {
             return new Everhour(apiKey);
         }
-        throw new Error(`Tracker ${app} is not handled`);
+        throw throwError(`Tracker ${app} is not handled`);
     },
 };
 
@@ -2292,6 +2296,11 @@ class ApiClient {
     }
 }
 
+async function createAPIClient() {
+    const config = await getAPIConfig();
+    return new ApiClient(config);
+}
+
 inquirer.prompt.registerPrompt('autocomplete', autocomplete__default["default"]);
 class PRBuilder {
     api;
@@ -2304,27 +2313,39 @@ class PRBuilder {
     constructor(api) {
         this.api = api;
     }
-    write(icon, title, data) {
+    static write(icon, title, data) {
         process.stdout.write(`${icon} ${source.bold(`${title}:`)} ${data}\n`);
+    }
+    static async promptDraft() {
+        const { draft } = await inquirer.prompt([
+            {
+                name: 'draft',
+                message: 'Draft ?',
+                prefix: '📑',
+                type: 'confirm',
+                default: false,
+            },
+        ]);
+        return draft;
     }
     writeFirstCommit() {
         const [firstCommit = ''] = this.commits;
-        this.write('🚚', 'Title:', firstCommit);
+        PRBuilder.write('🚚', 'Title:', firstCommit);
     }
     writeIssue() {
-        this.write('⏰', 'Issue', this.issue?.name ?? '');
+        PRBuilder.write('⏰', 'Issue', this.issue?.name ?? '');
     }
     writeBranch() {
-        this.write('🌿', 'Branch', this.branch ?? '');
+        PRBuilder.write('🌿', 'Branch', this.branch ?? '');
     }
     writeReviewers() {
-        this.write('🤓', 'Reviewer', this.reviewers.join(', '));
+        PRBuilder.write('🤓', 'Reviewer', this.reviewers.join(', '));
     }
     writeDraft() {
-        this.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
+        PRBuilder.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
     }
     writeLabels() {
-        this.write('🏷 ', 'Labels', this.labels.join(', '));
+        PRBuilder.write('🏷 ', 'Labels', this.labels.join(', '));
     }
     async promptBranch() {
         const branches = await this.api.getBranches();
@@ -2371,7 +2392,7 @@ class PRBuilder {
             if (items.length - results.size === 0)
                 break;
         }
-        return Array.from(results);
+        return [...results];
     }
     async promptReviewers() {
         let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
@@ -2402,18 +2423,6 @@ class PRBuilder {
         const { url, title, number } = issues.find(({ title }) => choices[0].includes(title));
         return { name: title, url, number };
     }
-    async promptDraft() {
-        const { draft } = await inquirer.prompt([
-            {
-                name: 'draft',
-                message: 'Draft ?',
-                prefix: '📑',
-                type: 'confirm',
-                default: false,
-            },
-        ]);
-        return draft;
-    }
     async run() {
         const { tracker } = this.api.config;
         switch (true) {
@@ -2440,7 +2449,7 @@ class PRBuilder {
         this.writeBranch();
         this.writeFirstCommit();
         this.writeReviewers();
-        this.draft = await this.promptDraft();
+        this.draft = await PRBuilder.promptDraft();
         this.labels = await this.promptLabels();
         console.clear();
         this.writeIssue();
@@ -2463,10 +2472,14 @@ class PRBuilder {
     }
 }
 
-module.exports = (async function () {
+module.exports = async function () {
     console.clear();
     const api = await createAPIClient();
     const builder = new PRBuilder(api);
     const info = await builder.run();
     await api.publishPR(info);
-})();
+};
+
+exports.getAPIConfig = getAPIConfig;
+exports.getConfigPath = getConfigPath;
+exports.saveConfig = saveConfig;

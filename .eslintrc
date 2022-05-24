@@ -7,15 +7,19 @@
   "settings": {
     "import/resolver": {
       "node": {
-        "extensions": [".js", ".ts"]
+        "extensions": [
+          ".js",
+          ".ts"
+        ]
       }
     }
   },
   "rules": {
-    "semi": [1, "never"],
+    "semi": 0,
     "implicit-arrow-linebreak": 0,
     "no-console": 0,
     "camelcase": 0,
-    "no-unused-declaration": true
+    "no-unused-declaration": 0,
+    "comma-style": "error"
   }
 }
