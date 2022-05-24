@@ -2,12 +2,14 @@
 
 'use strict';
 
+Object.defineProperty(exports, '__esModule', { value: true });
+
 var core = require('@octokit/core');
+var os = require('os');
+var tty = require('tty');
 var cp = require('child_process');
 var https = require('https');
 var util$1 = require('util');
-var os = require('os');
-var tty = require('tty');
 var fs = require('fs');
 var path = require('path');
 var inquirer = require('inquirer');
@@ -15,12 +17,35 @@ var autocomplete = require('inquirer-autocomplete-prompt');
 
 function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e : { 'default': e }; }
 
+var os__default = /*#__PURE__*/_interopDefaultLegacy(os);
+var tty__default = /*#__PURE__*/_interopDefaultLegacy(tty);
 var cp__default = /*#__PURE__*/_interopDefaultLegacy(cp);
 var https__default = /*#__PURE__*/_interopDefaultLegacy(https);
 var util__default = /*#__PURE__*/_interopDefaultLegacy(util$1);
-var os__default = /*#__PURE__*/_interopDefaultLegacy(os);
-var tty__default = /*#__PURE__*/_interopDefaultLegacy(tty);
 var autocomplete__default = /*#__PURE__*/_interopDefaultLegacy(autocomplete);
+
+function parseRecent(recent) {
+    return recent.map((r) => ({ value: r.value, date: new Date(r.date) }));
+}
+function updateRecent(recent, values, maxSize = 10) {
+    const sortedValues = new Set([...values].sort((a, b) => a.localeCompare(b)).slice(0, maxSize));
+    const date = new Date();
+    const removedRecent = recent.filter((r) => !sortedValues.has(r.value));
+    removedRecent.unshift(...[...sortedValues.values()].map((value) => ({
+        value,
+        date,
+    })));
+    return removedRecent.slice(0, maxSize);
+}
+function buildRecentList(recent, list) {
+    const set = new Set(recent.map(({ value }) => value));
+    const items = [
+        // filter recent that do not exist in current list
+        ...[...set].flatMap((v) => list.includes(v) ? [{ value: v, isRecent: true }] : []),
+        ...list.flatMap((v) => (set.has(v) ? [] : [{ value: v, isRecent: false }])),
+    ];
+    return items;
+}
 
 function createCommonjsModule(fn, module) {
 	return module = { exports: {} }, fn(module, module.exports), module.exports;
@@ -1900,6 +1925,13 @@ function normalize(string) {
     const expr = new RegExp(/"/gm);
     return string.trim().replace(expr, '\\"');
 }
+function stopApp(error, code = 1) {
+    if (error) {
+        console.clear();
+        console.log(error);
+        process.exit(code);
+    }
+}
 const deleteLastLine = () => process.stdout.write('\r\x1b[K');
 const tempLine = (message) => {
     process.stdout.write(source.italic.gray(`${message}`));
@@ -1963,30 +1995,6 @@ const request = async (options) => {
         req.write('');
     });
 };
-
-function parseRecent(recent) {
-    return recent.map((r) => ({ value: r.value, date: new Date(r.date) }));
-}
-function updateRecent(recent, values, maxSize = 10) {
-    const sortedValues = new Set([...values].sort((a, b) => a.localeCompare(b)).slice(0, maxSize));
-    const date = new Date();
-    const removedRecent = recent.filter((r) => !sortedValues.has(r.value));
-    removedRecent.unshift(...Array.from(sortedValues.values()).map((value) => ({
-        value,
-        date,
-    })));
-    return removedRecent.slice(0, maxSize);
-}
-function buildRecentList(recent, list) {
-    const set = new Set(recent.map(({ value }) => value));
-    const items = [
-        // filter recent that do not exist in current list
-        ...Array.from(set).flatMap((v) => list.includes(v) ? [{ value: v, isRecent: true }] : []),
-        ...list.flatMap((v) => (set.has(v) ? [] : [{ value: v, isRecent: false }])),
-    ];
-    return items;
-}
-
 async function parseRepoData() {
     const data = await exec('git config --get remote.origin.url');
     // git@github.com:mykhaliuk/ghpr.git
@@ -2027,7 +2035,7 @@ async function getAPIConfig() {
             };
         }
         catch (err) {
-            throw new Error('Unable to parse config file');
+            stopApp('Unable to parse config file');
         }
     }
     line('Initializing...');
@@ -2122,9 +2130,13 @@ async function getAPIConfig() {
         },
     };
 }
-async function createAPIClient() {
-    const config = await getAPIConfig();
-    return new ApiClient(config);
+function returnVersion() {
+    if (!process.argv[2]?.includes?.('-v'))
+        return;
+    const filePath = path.join(__dirname.split('/').slice(0, -1).join('/'), 'package.json');
+    const raw = fs.readFileSync(filePath);
+    const { version } = JSON.parse(raw.toString());
+    stopApp(`Version: ${version}`, 0);
 }
 
 class Everhour {
@@ -2159,7 +2171,7 @@ const TrackerFactory = {
         if (app === 'everhour') {
             return new Everhour(apiKey);
         }
-        throw new Error(`Tracker ${app} is not handled`);
+        throw stopApp(`Tracker ${app} is not handled`);
     },
 };
 
@@ -2211,9 +2223,6 @@ class ApiClient {
         });
         return collabs.data;
     }
-    getRecent(key) {
-        return this.cfg.recents[key];
-    }
     withRecent(key, list) {
         return buildRecentList(this.getRecent(key), list);
     }
@@ -2222,9 +2231,6 @@ class ApiClient {
         this.cfg.recents[key] = newList;
         this.saveConfig();
         return newList;
-    }
-    saveConfig() {
-        saveConfig(this.cfg);
     }
     async getLabels() {
         const labels = await this.ok.request('GET /repos/{owner}/{repo}/labels', {
@@ -2240,8 +2246,7 @@ class ApiClient {
         if (!trackerInfo)
             return null;
         const trackerAPI = TrackerFactory.create(trackerInfo.app, trackerInfo.token);
-        const issue = await trackerAPI.getActiveIssue();
-        return issue;
+        return trackerAPI.getActiveIssue();
     }
     async getGHIssues(state) {
         const issues = await this.ok.request('GET /issues', {
@@ -2290,6 +2295,17 @@ class ApiClient {
             GITHUB_TOKEN: this.cfg.token,
         });
     }
+    getRecent(key) {
+        return this.cfg.recents[key];
+    }
+    saveConfig() {
+        saveConfig(this.cfg);
+    }
+}
+
+async function createAPIClient() {
+    const config = await getAPIConfig();
+    return new ApiClient(config);
 }
 
 inquirer.prompt.registerPrompt('autocomplete', autocomplete__default["default"]);
@@ -2304,27 +2320,76 @@ class PRBuilder {
     constructor(api) {
         this.api = api;
     }
-    write(icon, title, data) {
+    static write(icon, title, data) {
         process.stdout.write(`${icon} ${source.bold(`${title}:`)} ${data}\n`);
+    }
+    static async promptDraft() {
+        const { draft } = await inquirer.prompt([
+            {
+                name: 'draft',
+                message: 'Draft ?',
+                prefix: '📑',
+                type: 'confirm',
+                default: false,
+            },
+        ]);
+        return draft;
+    }
+    async run() {
+        const { tracker } = this.api.config;
+        switch (true) {
+            case tracker?.app === 'everhour':
+                this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
+                this.writeIssue();
+                break;
+            case !tracker?.app:
+            default:
+                this.issue = await this.promptIssue();
+                console.clear();
+                this.writeIssue();
+                this.writeBranch();
+        }
+        this.branch = await this.promptBranch();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.commits = await withTempLine('Retrieve first commit', async () => this.api.getCommits(this.branch));
+        this.writeFirstCommit();
+        this.reviewers = await this.promptReviewers();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeFirstCommit();
+        this.writeReviewers();
+        this.draft = await PRBuilder.promptDraft();
+        this.labels = await this.promptLabels();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeFirstCommit();
+        this.writeReviewers();
+        this.writeDraft();
+        this.writeLabels();
+        return this.build();
     }
     writeFirstCommit() {
         const [firstCommit = ''] = this.commits;
-        this.write('🚚', 'Title:', firstCommit);
+        PRBuilder.write('🚚', 'Title:', firstCommit);
     }
     writeIssue() {
-        this.write('⏰', 'Issue', this.issue?.name ?? '');
+        PRBuilder.write('⏰', 'Issue', this.issue?.name ?? '');
     }
     writeBranch() {
-        this.write('🌿', 'Branch', this.branch ?? '');
+        PRBuilder.write('🌿', 'Branch', this.branch ?? '');
     }
     writeReviewers() {
-        this.write('🤓', 'Reviewer', this.reviewers.join(', '));
+        PRBuilder.write('🤓', 'Reviewer', this.reviewers.join(', '));
     }
     writeDraft() {
-        this.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
+        PRBuilder.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
     }
     writeLabels() {
-        this.write('🏷 ', 'Labels', this.labels.join(', '));
+        PRBuilder.write('🏷 ', 'Labels', this.labels.join(', '));
     }
     async promptBranch() {
         const branches = await this.api.getBranches();
@@ -2371,7 +2436,7 @@ class PRBuilder {
             if (items.length - results.size === 0)
                 break;
         }
-        return Array.from(results);
+        return [...results];
     }
     async promptReviewers() {
         let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
@@ -2402,55 +2467,6 @@ class PRBuilder {
         const { url, title, number } = issues.find(({ title }) => choices[0].includes(title));
         return { name: title, url, number };
     }
-    async promptDraft() {
-        const { draft } = await inquirer.prompt([
-            {
-                name: 'draft',
-                message: 'Draft ?',
-                prefix: '📑',
-                type: 'confirm',
-                default: false,
-            },
-        ]);
-        return draft;
-    }
-    async run() {
-        const { tracker } = this.api.config;
-        switch (true) {
-            case tracker?.app === 'everhour':
-                this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
-                this.writeIssue();
-                break;
-            case !tracker?.app:
-            default:
-                this.issue = await this.promptIssue();
-                console.clear();
-                this.writeIssue();
-                this.writeBranch();
-        }
-        this.branch = await this.promptBranch();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.commits = await withTempLine('Retrieve first commit', async () => this.api.getCommits(this.branch));
-        this.writeFirstCommit();
-        this.reviewers = await this.promptReviewers();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.writeFirstCommit();
-        this.writeReviewers();
-        this.draft = await this.promptDraft();
-        this.labels = await this.promptLabels();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.writeFirstCommit();
-        this.writeReviewers();
-        this.writeDraft();
-        this.writeLabels();
-        return this.build();
-    }
     build() {
         return {
             branch: this.branch,
@@ -2464,9 +2480,14 @@ class PRBuilder {
 }
 
 module.exports = (async function () {
+    returnVersion();
     console.clear();
     const api = await createAPIClient();
     const builder = new PRBuilder(api);
     const info = await builder.run();
     await api.publishPR(info);
 })();
+
+exports.getAPIConfig = getAPIConfig;
+exports.getConfigPath = getConfigPath;
+exports.saveConfig = saveConfig;
