@@ -17,7 +17,7 @@ export function normalize(string: string) {
   return string.trim().replace(expr, '\\"');
 }
 
-export function throwError(error?: string, code = 1) {
+export function stopApp(error?: string, code = 1) {
   if (error) {
     console.clear();
     console.log(error);
@@ -189,7 +189,7 @@ export async function getAPIConfig(): Promise<APIConfig> {
         },
       };
     } catch (err) {
-      throwError('Unable to parse config file');
+      stopApp('Unable to parse config file');
     }
   }
 
@@ -305,4 +305,17 @@ export async function getAPIConfig(): Promise<APIConfig> {
       labels: [],
     },
   };
+}
+
+export function returnVersion() {
+  if (!process.argv[2]?.includes?.('-v')) return;
+
+  const filePath = join(
+    __dirname.split('/').slice(0, -1).join('/'),
+    'package.json',
+  );
+  const raw = readFileSync(filePath);
+  const { version } = JSON.parse(raw.toString());
+
+  stopApp(`Version: ${version}`, 0);
 }

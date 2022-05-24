@@ -1,4 +1,4 @@
-import { throwError } from '../../utils';
+import { stopApp } from '../../utils';
 import { TrackerAppName } from '../interfaces';
 import { Everhour } from './Everhour';
 import { TrackerAPI } from './interfaces';
@@ -9,6 +9,6 @@ export const TrackerFactory = {
       return new Everhour(apiKey);
     }
 
-    throw throwError(`Tracker ${app} is not handled`);
+    throw stopApp(`Tracker ${app} is not handled`);
   },
 };

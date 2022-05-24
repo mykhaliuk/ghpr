@@ -1925,7 +1925,7 @@ function normalize(string) {
     const expr = new RegExp(/"/gm);
     return string.trim().replace(expr, '\\"');
 }
-function throwError(error, code = 1) {
+function stopApp(error, code = 1) {
     if (error) {
         console.clear();
         console.log(error);
@@ -2035,7 +2035,7 @@ async function getAPIConfig() {
             };
         }
         catch (err) {
-            throwError('Unable to parse config file');
+            stopApp('Unable to parse config file');
         }
     }
     line('Initializing...');
@@ -2130,6 +2130,14 @@ async function getAPIConfig() {
         },
     };
 }
+function returnVersion() {
+    if (!process.argv[2]?.includes?.('-v'))
+        return;
+    const filePath = path.join(__dirname.split('/').slice(0, -1).join('/'), 'package.json');
+    const raw = fs.readFileSync(filePath);
+    const { version } = JSON.parse(raw.toString());
+    stopApp(`Version: ${version}`, 0);
+}
 
 class Everhour {
     apiKey;
@@ -2163,7 +2171,7 @@ const TrackerFactory = {
         if (app === 'everhour') {
             return new Everhour(apiKey);
         }
-        throw throwError(`Tracker ${app} is not handled`);
+        throw stopApp(`Tracker ${app} is not handled`);
     },
 };
 
@@ -2471,13 +2479,14 @@ class PRBuilder {
     }
 }
 
-module.exports = async function () {
+module.exports = (async function () {
+    returnVersion();
     console.clear();
     const api = await createAPIClient();
     const builder = new PRBuilder(api);
     const info = await builder.run();
     await api.publishPR(info);
-};
+})();
 
 exports.getAPIConfig = getAPIConfig;
 exports.getConfigPath = getConfigPath;
