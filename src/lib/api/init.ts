@@ -1,92 +1,92 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
-import chalk from 'chalk'
-import { Question, prompt } from 'inquirer'
+import chalk from 'chalk';
+import { Question, prompt } from 'inquirer';
 
-import { exec, line } from '../utils'
-import { APIClient } from './client'
-import { APIConfig, IAPIClient, TrackerApp, TrackerInfo } from './interfaces'
-import { parseRecents } from './recent'
-import { SerializedRecent } from './recent/interface'
+import { exec, line } from '../utils';
+import { ApiClient } from './client';
+import { APIConfig, APIClient, TrackerApp, TrackerInfo } from './interfaces';
+import { parseRecent } from './recent';
+import { SerializedRecent } from './recent/interface';
 
 type PromptAPIConfig = {
-  login: string
-  token?: string
-  trackerName: TrackerApp
-}
+  login: string;
+  token?: string;
+  trackerName: TrackerApp;
+};
 
 type StoredAPIConfig = Omit<APIConfig, 'repo' | 'owner' | 'recents'> & {
   recents: {
-    branches: SerializedRecent[]
-    reviewers: SerializedRecent[]
-    labels: SerializedRecent[]
-  }
-}
+    branches: SerializedRecent[];
+    reviewers: SerializedRecent[];
+    labels: SerializedRecent[];
+  };
+};
 
 type RepoInfo = {
-  repo: string
-  owner: string
-}
+  repo: string;
+  owner: string;
+};
 
 async function parseRepoData(): Promise<RepoInfo> {
-  const data = await exec('git config --get remote.origin.url')
+  const data = await exec('git config --get remote.origin.url');
 
   // git@github.com:mykhaliuk/ghpr.git
-  const { 1: or } = data.split(':')
+  const { 1: or } = data.split(':');
   // mykhaliuk/ghpr.git
-  const { 0: owner, 1: repoGit } = or.split('/')
+  const { 0: owner, 1: repoGit } = or.split('/');
   // ghpr.git
-  const repo = repoGit.slice(0, -5)
+  const repo = repoGit.slice(0, -5);
   // ghpr
-  return { repo, owner }
+  return { repo, owner };
 }
 
 export function getConfigPath() {
-  const configName = '.ghprrc'
-  const homedir = require('os').homedir()
+  const configName = '.ghprrc';
+  const homedir = require('os').homedir();
 
-  return join(homedir, configName)
+  return join(homedir, configName);
 }
 
 export function saveConfig(config: APIConfig) {
-  const path = getConfigPath()
-  const configData = JSON.stringify(config)
+  const path = getConfigPath();
+  const configData = JSON.stringify(config);
 
-  writeFileSync(path, configData)
+  writeFileSync(path, configData);
 }
 
 export async function getAPIConfig(): Promise<APIConfig> {
-  const configPath = getConfigPath()
-  const { repo, owner } = await parseRepoData()
+  const configPath = getConfigPath();
+  const { repo, owner } = await parseRepoData();
 
   if (existsSync(configPath)) {
     try {
-      const configData = readFileSync(configPath)
+      const configData = readFileSync(configPath);
 
-      const config = JSON.parse(configData.toString()) as StoredAPIConfig
+      const config = JSON.parse(configData.toString()) as StoredAPIConfig;
 
       return {
         ...config,
         repo,
         owner,
         recents: {
-          branches: parseRecents(config.recents?.branches || []),
-          reviewers: parseRecents(config.recents?.reviewers || []),
-          labels: parseRecents(config.recents?.labels || []),
+          branches: parseRecent(config.recents?.branches || []),
+          reviewers: parseRecent(config.recents?.reviewers || []),
+          labels: parseRecent(config.recents?.labels || []),
         },
-      }
+      };
     } catch (err) {
-      throw new Error('Unable to parse config file')
+      throw new Error('Unable to parse config file');
     }
   }
 
-  line('Initializing...')
+  line('Initializing...');
 
-  const { GITHUB_TOKEN, GH_TOKEN } = process.env
-  const ghtoken = GITHUB_TOKEN || GH_TOKEN || ''
+  const { GITHUB_TOKEN, GH_TOKEN } = process.env;
+  const ghtoken = GITHUB_TOKEN || GH_TOKEN || '';
 
-  const prompts: Question[] = []
+  const prompts: Question[] = [];
 
   if (!ghtoken) {
     prompts.push({
@@ -95,11 +95,12 @@ export async function getAPIConfig(): Promise<APIConfig> {
       message: 'Enter your GitHub TOKEN please:',
       type: 'input',
       validate(login: any) {
-        if (!login) return chalk.red.bold("I can't leave w/out Github Token 🥺")
+        if (!login)
+          return chalk.red.bold("I can't leave w/out Github Token 🥺");
 
-        return true
+        return true;
       },
-    })
+    });
   }
 
   prompts.push({
@@ -108,11 +109,11 @@ export async function getAPIConfig(): Promise<APIConfig> {
     message: 'Enter your GitHub LOGIN please:',
     type: 'input',
     validate(login: any) {
-      if (!login) return chalk.red.bold("I can't leave w/out login 🥺")
+      if (!login) return chalk.red.bold("I can't leave w/out login 🥺");
 
-      return true
+      return true;
     },
-  })
+  });
 
   prompts.push({
     name: 'trackerName',
@@ -124,15 +125,15 @@ export async function getAPIConfig(): Promise<APIConfig> {
       // { name: 'toggl', value: 'toggl' },
       { name: 'no thanks', value: '' },
     ],
-  } as any)
+  } as any);
 
   const {
     login,
     token = ghtoken,
     trackerName,
-  } = await prompt<PromptAPIConfig>(prompts)
+  } = await prompt<PromptAPIConfig>(prompts);
 
-  let tracker: TrackerInfo | undefined = undefined
+  let tracker: TrackerInfo | undefined = undefined;
   if (trackerName) {
     const { trackerToken } = await prompt([
       {
@@ -144,17 +145,17 @@ export async function getAPIConfig(): Promise<APIConfig> {
           if (!trackerToken)
             return chalk.red.bold(
               "I can't leave w/out providing a token for the time tracker 🥺",
-            )
+            );
 
-          return true
+          return true;
         },
       },
-    ])
+    ]);
 
     tracker = {
       app: trackerName,
       token: trackerToken,
-    }
+    };
   }
 
   const config: StoredAPIConfig = {
@@ -166,20 +167,20 @@ export async function getAPIConfig(): Promise<APIConfig> {
       reviewers: [],
       labels: [],
     },
-  }
-  const configData = JSON.stringify(config)
+  };
+  const configData = JSON.stringify(config);
 
-  writeFileSync(configPath, configData)
-  process.stdout.write(chalk.magentaBright('\nConfig saved to ~/.ghprrc\n'))
+  writeFileSync(configPath, configData);
+  process.stdout.write(chalk.magentaBright('\nConfig saved to ~/.ghprrc\n'));
 
   const { confirm } = await prompt({
     name: 'confirm',
     type: 'confirm',
     message: 'Continue creating your Pull Request ?',
-  })
+  });
 
   if (!confirm) {
-    process.exit(0)
+    process.exit(0);
   }
 
   return {
@@ -191,11 +192,11 @@ export async function getAPIConfig(): Promise<APIConfig> {
       reviewers: [],
       labels: [],
     },
-  }
+  };
 }
 
-export async function createAPIClient(): Promise<IAPIClient> {
-  const config = await getAPIConfig()
+export async function createAPIClient(): Promise<APIClient> {
+  const config = await getAPIConfig();
 
-  return new APIClient(config)
+  return new ApiClient(config);
 }

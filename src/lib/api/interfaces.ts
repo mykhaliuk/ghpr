@@ -1,90 +1,90 @@
-import { Recent, RecentListItem } from './recent/interface'
+import { Recent, RecentListItem } from './recent/interface';
 export type Issue = {
-  url: string
-  name: string
-  number: number
-}
+  url: string;
+  name: string;
+  number: number;
+};
 
 export interface PRInfo {
-  branch: string
-  draft: boolean
-  reviewers: string[]
-  labels: string[]
-  commits: string[]
-  issue: Issue | null
+  branch: string;
+  draft: boolean;
+  reviewers: string[];
+  labels: string[];
+  commits: string[];
+  issue: Issue | null;
 }
 
-export type TrackerApp = 'everhour' // | 'toggl'
+export type TrackerApp = 'everhour'; // | 'toggl'
 
 export type TrackerInfo = {
-  app: TrackerApp
-  token: string
-}
+  app: TrackerApp;
+  token: string;
+};
 
-export type RecentsConfig = {
-  branches: Recent[]
-  reviewers: Recent[]
-  labels: Recent[]
-}
+export type RecentConfig = {
+  branches: Recent[];
+  reviewers: Recent[];
+  labels: Recent[];
+};
 
-export type RecentsKeys = keyof RecentsConfig
+export type RecentKey = keyof RecentConfig;
 
 export type APIConfig = {
-  login: string
-  token: string
-  repo: string
-  owner: string
-  recents: RecentsConfig
-  tracker?: TrackerInfo
-}
+  login: string;
+  token: string;
+  repo: string;
+  owner: string;
+  recents: RecentConfig;
+  tracker?: TrackerInfo;
+};
 
 export type Collaborator = {
-  login: string
-  id: number
-  node_id: string
-  avatar_url: string
-  gravatar_id: ''
-  url: string
-  html_url: string
-  followers_url: string
-  following_url: string
-  gists_url: string
-  starred_url: string
-  subscriptions_url: string
-  organizations_url: string
-  repos_url: string
-  events_url: string
-  received_events_url: string
-  type: 'User'
-  site_admin: false
+  login: string;
+  id: number;
+  node_id: string;
+  avatar_url: string;
+  gravatar_id: '';
+  url: string;
+  html_url: string;
+  followers_url: string;
+  following_url: string;
+  gists_url: string;
+  starred_url: string;
+  subscriptions_url: string;
+  organizations_url: string;
+  repos_url: string;
+  events_url: string;
+  received_events_url: string;
+  type: 'User';
+  site_admin: false;
   permissions: {
-    admin: true
-    maintain: true
-    push: true
-    triage: true
-    pull: true
-  }
-  role_name: 'admin'
-}
+    admin: true;
+    maintain: true;
+    push: true;
+    triage: true;
+    pull: true;
+  };
+  role_name: 'admin';
+};
 
 export type Label = {
-  id: number
-  node_id: string
-  url: string
-  name: string
-  description: string | null
-  color: string
-  default: boolean
-}
+  id: number;
+  node_id: string;
+  url: string;
+  name: string;
+  description: string | null;
+  color: string;
+  default: boolean;
+};
 
-export interface IAPIClient {
-  getCollabs(): Promise<Collaborator[]>
-  getLabels(): Promise<Label[]>
-  getBranches(): Promise<string[]>
-  getTrackerIssue(): Promise<Issue | null>
-  getCommits(base: string): Promise<string[]>
-  publishPR(info: PRInfo): Promise<void>
+export type APIClient = {
+  getCollabs(): Promise<Collaborator[]>;
+  getLabels(): Promise<Label[]>;
+  getBranches(): Promise<string[]>;
+  getTrackerIssue(): Promise<Issue | null>;
+  getCommits(base: string): Promise<string[]>;
+  publishPR(info: PRInfo): Promise<void>;
 
-  withRecents(key: RecentsKeys, list: string[]): RecentListItem[]
-  updateRecent(key: RecentsKeys, values: string[]): Recent[]
-}
+  withRecent(key: RecentKey, list: string[]): RecentListItem[];
+  updateRecent(key: RecentKey, values: string[]): Recent[];
+};
