@@ -2193,7 +2193,6 @@ class ApiClient {
         if (!branches.data?.length)
             throw new Error('Error getting branches');
         const res = branches.data?.map(({ name }) => name);
-        console.log(res);
         return res;
     }
     async getCommits(base) {
@@ -2338,7 +2337,7 @@ class PRBuilder {
                             stopValue.push(doneToken);
                         if (results.has(value))
                             return stopValue;
-                        const name = `${isRecent ? '↩︎' : ` ‣`} ${idx + 1}. ${value}`;
+                        const name = `${isRecent ? '❤︎' : ` `} ${idx + 1}. ${value}`;
                         if (!input)
                             return [...stopValue, name];
                         const regexpLogin = new RegExp(`${input.toLowerCase()}.*`);
@@ -2352,7 +2351,7 @@ class PRBuilder {
             ]);
             if (value === doneToken)
                 break;
-            value = value.replace(/.+(\d+\.|↩︎)\s+/, '');
+            value = value.replace(/.+(\d+\.|❤︎)\s+/, '');
             results.add(value);
             if (maxSelect > 0 && results.size >= maxSelect)
                 break;

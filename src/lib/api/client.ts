@@ -56,7 +56,6 @@ export class ApiClient implements APIClient {
     if (!branches.data?.length) throw new Error('Error getting branches');
 
     const res = branches.data?.map(({ name }) => name);
-    console.log(res);
     return res;
   }
 

@@ -82,7 +82,7 @@ export class PRBuilder {
 
                 if (results.has(value)) return stopValue;
 
-                const name = `${isRecent ? '↩︎' : ` ‣`} ${idx + 1}. ${value}`;
+                const name = `${isRecent ? '❤︎' : ` `} ${idx + 1}. ${value}`;
 
                 if (!input) return [...stopValue, name];
 
@@ -100,7 +100,7 @@ export class PRBuilder {
 
       if (value === doneToken) break;
 
-      value = value.replace(/.+(\d+\.|↩︎)\s+/, '');
+      value = value.replace(/.+(\d+\.|❤︎)\s+/, '');
       results.add(value);
 
       if (maxSelect > 0 && results.size >= maxSelect) break;
