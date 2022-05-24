@@ -2153,24 +2153,27 @@ const TrackerFactory = {
 };
 
 class ApiClient {
-    config;
+    cfg;
     ok;
     constructor(config) {
-        this.config = config;
-        const { token } = this.config;
+        this.cfg = config;
+        const { token } = this.cfg;
         this.ok = new Octokit({ auth: token });
     }
     get login() {
-        return this.config.login;
+        return this.cfg.login;
     }
     get owner() {
-        return this.config.owner;
+        return this.cfg.owner;
     }
     get repo() {
-        return this.config.repo;
+        return this.cfg.repo;
     }
     get trackerApp() {
-        return this.config.tracker;
+        return this.cfg.tracker;
+    }
+    get config() {
+        return this.cfg;
     }
     async getBranches() {
         const branches = await this.ok.request('GET /repos/{owner}/{repo}/branches', {
@@ -2198,19 +2201,19 @@ class ApiClient {
         return collabs.data;
     }
     getRecent(key) {
-        return this.config.recents[key];
+        return this.cfg.recents[key];
     }
     withRecent(key, list) {
         return buildRecentList(this.getRecent(key), list);
     }
     updateRecent(key, values) {
-        const newList = updateRecent(this.config.recents[key], values, 10);
-        this.config.recents[key] = newList;
+        const newList = updateRecent(this.cfg.recents[key], values, 10);
+        this.cfg.recents[key] = newList;
         this.saveConfig();
         return newList;
     }
     saveConfig() {
-        saveConfig(this.config);
+        saveConfig(this.cfg);
     }
     async getLabels() {
         const labels = await this.ok.request('GET /repos/{owner}/{repo}/labels', {
@@ -2228,6 +2231,16 @@ class ApiClient {
         const trackerAPI = TrackerFactory.create(trackerInfo.app, trackerInfo.token);
         const issue = await trackerAPI.getActiveIssue();
         return issue;
+    }
+    async getGHIssues(state) {
+        const issues = await this.ok.request('GET /issues', {
+            owner: this.owner,
+            repo: this.repo,
+            per_page: 100,
+            page: 1,
+            state: state || 'open',
+        });
+        return issues.data;
     }
     async publishPR(info) {
         console.clear();
@@ -2263,7 +2276,7 @@ class ApiClient {
             }
             process.stdout.write(data);
         }, {
-            GITHUB_TOKEN: this.config.token,
+            GITHUB_TOKEN: this.cfg.token,
         });
     }
 }
@@ -2288,10 +2301,10 @@ class PRBuilder {
         this.write('🚚', 'Title:', firstCommit);
     }
     writeIssue() {
-        this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
+        this.write('⏰', 'Issue', this.issue?.name ?? '');
     }
     writeBranch() {
-        this.write('🌿', 'Branch', this.branch || '');
+        this.write('🌿', 'Branch', this.branch ?? '');
     }
     writeReviewers() {
         this.write('🤓', 'Reviewer', this.reviewers.join(', '));
@@ -2358,12 +2371,25 @@ class PRBuilder {
         return reviewers;
     }
     async promptLabels() {
-        let gitLabels = await withTempLine('Search for labels', () => this.api.getLabels());
+        const gitLabels = await withTempLine('Search for labels...', () => this.api.getLabels());
         this.writeLabels();
         const list = this.api.withRecent('labels', gitLabels.map((l) => l.name));
         const labels = await this.promptAutoComplete(list);
         this.api.updateRecent('labels', labels);
         return labels;
+    }
+    async promptIssue() {
+        const issues = await withTempLine('Fetching GitHub issues...', () => this.api.getGHIssues());
+        this.writeIssue();
+        const list = issues.map(({ title, number }) => ({
+            value: `#${number} - ${title}`,
+            isRecent: false,
+        }));
+        const choices = await this.promptAutoComplete(list, 1);
+        if (choices.length === 0)
+            return null;
+        const { url, title, number } = issues.find(({ title }) => choices[0].includes(title));
+        return { name: title, url, number };
     }
     async promptDraft() {
         const { draft } = await prompt([
@@ -2378,8 +2404,19 @@ class PRBuilder {
         return draft;
     }
     async run() {
-        this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
-        this.writeIssue();
+        const { tracker } = this.api.config;
+        switch (true) {
+            case tracker?.app === 'everhour':
+                this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
+                this.writeIssue();
+                break;
+            case !tracker?.app:
+            default:
+                this.issue = await this.promptIssue();
+                console.clear();
+                this.writeIssue();
+                this.writeBranch();
+        }
         this.branch = await this.promptBranch();
         console.clear();
         this.writeIssue();
@@ -2417,8 +2454,8 @@ class PRBuilder {
 
 module.exports = (async function () {
     console.clear();
-    const client = await createAPIClient();
-    const builder = new PRBuilder(client);
+    const api = await createAPIClient();
+    const builder = new PRBuilder(api);
     const info = await builder.run();
-    await client.publishPR(info);
+    await api.publishPR(info);
 })();

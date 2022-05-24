@@ -3,9 +3,10 @@ import { Octokit } from '@octokit/core';
 import { deleteLastLine, exec, normalize, spawn, tempLine } from '../utils';
 import { saveConfig } from './init';
 import {
+  APIClient,
   APIConfig,
   Collaborator,
-  APIClient,
+  GHIssues,
   Issue,
   PRInfo,
   TrackerInfo,
@@ -16,30 +17,34 @@ import { Recent, RecentListItem } from './recent/interface';
 import { TrackerFactory } from './tracker/index';
 
 export class ApiClient implements APIClient {
-  protected readonly config: APIConfig;
+  protected readonly cfg: APIConfig;
   protected readonly ok: Octokit;
 
   constructor(config: APIConfig) {
-    this.config = config;
-    const { token } = this.config;
+    this.cfg = config;
+    const { token } = this.cfg;
 
     this.ok = new Octokit({ auth: token });
   }
 
   get login() {
-    return this.config.login;
+    return this.cfg.login;
   }
 
   get owner() {
-    return this.config.owner;
+    return this.cfg.owner;
   }
 
   get repo() {
-    return this.config.repo;
+    return this.cfg.repo;
   }
 
   get trackerApp(): TrackerInfo | undefined {
-    return this.config.tracker;
+    return this.cfg.tracker;
+  }
+
+  get config() {
+    return this.cfg;
   }
 
   public async getBranches(): Promise<string[]> {
@@ -82,7 +87,7 @@ export class ApiClient implements APIClient {
   }
 
   private getRecent(key: RecentKey): Recent[] {
-    return this.config.recents[key];
+    return this.cfg.recents[key];
   }
 
   public withRecent(key: RecentKey, list: string[]): RecentListItem[] {
@@ -90,15 +95,15 @@ export class ApiClient implements APIClient {
   }
 
   public updateRecent(key: RecentKey, values: string[]): Recent[] {
-    const newList = updateRecent(this.config.recents[key], values, 10);
-    this.config.recents[key] = newList;
+    const newList = updateRecent(this.cfg.recents[key], values, 10);
+    this.cfg.recents[key] = newList;
 
     this.saveConfig();
     return newList;
   }
 
   private saveConfig() {
-    saveConfig(this.config);
+    saveConfig(this.cfg);
   }
 
   public async getLabels() {
@@ -124,6 +129,20 @@ export class ApiClient implements APIClient {
     const issue = await trackerAPI.getActiveIssue();
 
     return issue;
+  }
+
+  public async getGHIssues(
+    state?: 'all' | 'closed' | 'open',
+  ): Promise<GHIssues> {
+    const issues = await this.ok.request('GET /issues', {
+      owner: this.owner,
+      repo: this.repo,
+      per_page: 100,
+      page: 1,
+      state: state || 'open',
+    });
+
+    return issues.data;
   }
 
   public async publishPR(info: PRInfo) {
@@ -170,7 +189,7 @@ export class ApiClient implements APIClient {
         process.stdout.write(data);
       },
       {
-        GITHUB_TOKEN: this.config.token,
+        GITHUB_TOKEN: this.cfg.token,
       },
     );
   }

@@ -1,90 +1,95 @@
+import { Endpoints } from '@octokit/types';
 import { Recent, RecentListItem } from './recent/interface';
+
 export type Issue = {
-  url: string;
   name: string;
   number: number;
+  url: string;
 };
 
-export interface PRInfo {
-  branch: string;
-  draft: boolean;
-  reviewers: string[];
-  labels: string[];
-  commits: string[];
-  issue: Issue | null;
-}
+export type GHIssues = Endpoints['GET /issues']['response']['data'];
 
-export type TrackerApp = 'everhour'; // | 'toggl'
+export type PRInfo = {
+  branch: string;
+  commits: string[];
+  draft: boolean;
+  issue: Issue | null;
+  labels: string[];
+  reviewers: string[];
+};
+
+export type TrackerAppName = 'everhour'; // | 'toggl'
 
 export type TrackerInfo = {
-  app: TrackerApp;
+  app: TrackerAppName;
   token: string;
 };
 
 export type RecentConfig = {
   branches: Recent[];
-  reviewers: Recent[];
   labels: Recent[];
+  reviewers: Recent[];
 };
 
 export type RecentKey = keyof RecentConfig;
 
 export type APIConfig = {
   login: string;
-  token: string;
-  repo: string;
   owner: string;
   recents: RecentConfig;
+  repo: string;
+  token: string;
   tracker?: TrackerInfo;
 };
 
 export type Collaborator = {
-  login: string;
-  id: number;
-  node_id: string;
   avatar_url: string;
-  gravatar_id: '';
-  url: string;
-  html_url: string;
+  events_url: string;
   followers_url: string;
   following_url: string;
   gists_url: string;
+  gravatar_id: '';
+  html_url: string;
+  id: number;
+  login: string;
+  node_id: string;
+  organizations_url: string;
+  received_events_url: string;
+  repos_url: string;
+  site_admin: false;
   starred_url: string;
   subscriptions_url: string;
-  organizations_url: string;
-  repos_url: string;
-  events_url: string;
-  received_events_url: string;
   type: 'User';
-  site_admin: false;
+  url: string;
   permissions: {
     admin: true;
     maintain: true;
+    pull: true;
     push: true;
     triage: true;
-    pull: true;
   };
   role_name: 'admin';
 };
 
 export type Label = {
-  id: number;
-  node_id: string;
-  url: string;
-  name: string;
-  description: string | null;
   color: string;
   default: boolean;
+  description: string | null;
+  id: number;
+  name: string;
+  node_id: string;
+  url: string;
 };
 
 export type APIClient = {
-  getCollabs(): Promise<Collaborator[]>;
-  getLabels(): Promise<Label[]>;
   getBranches(): Promise<string[]>;
-  getTrackerIssue(): Promise<Issue | null>;
+  getCollabs(): Promise<Collaborator[]>;
   getCommits(base: string): Promise<string[]>;
+  getGHIssues(): Promise<GHIssues>;
+  getLabels(): Promise<Label[]>;
+  getTrackerIssue(): Promise<Issue | null>;
   publishPR(info: PRInfo): Promise<void>;
-
-  withRecent(key: RecentKey, list: string[]): RecentListItem[];
   updateRecent(key: RecentKey, values: string[]): Recent[];
+  withRecent(key: RecentKey, list: string[]): RecentListItem[];
+  config: APIConfig;
 };

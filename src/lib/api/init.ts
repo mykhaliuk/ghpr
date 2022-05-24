@@ -6,14 +6,19 @@ import { Question, prompt } from 'inquirer';
 
 import { exec, line } from '../utils';
 import { ApiClient } from './client';
-import { APIConfig, APIClient, TrackerApp, TrackerInfo } from './interfaces';
+import {
+  APIConfig,
+  APIClient,
+  TrackerAppName,
+  TrackerInfo,
+} from './interfaces';
 import { parseRecent } from './recent';
 import { SerializedRecent } from './recent/interface';
 
 type PromptAPIConfig = {
   login: string;
   token?: string;
-  trackerName: TrackerApp;
+  trackerName: TrackerAppName;
 };
 
 type StoredAPIConfig = Omit<APIConfig, 'repo' | 'owner' | 'recents'> & {
