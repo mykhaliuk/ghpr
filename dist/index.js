@@ -1964,23 +1964,24 @@ const request = async (options) => {
     });
 };
 
-function parseRecents(recents) {
-    return recents.map((r) => ({ value: r.value, date: new Date(r.date) }));
+function parseRecent(recent) {
+    return recent.map((r) => ({ value: r.value, date: new Date(r.date) }));
 }
-function updateRecents(recents, values, maxSize = 10) {
+function updateRecent(recent, values, maxSize = 10) {
     const sortedValues = new Set([...values].sort((a, b) => a.localeCompare(b)).slice(0, maxSize));
     const date = new Date();
-    const removedRecents = recents.filter((r) => !sortedValues.has(r.value));
-    removedRecents.unshift(...Array.from(sortedValues.values()).map((value) => ({
+    const removedRecent = recent.filter((r) => !sortedValues.has(r.value));
+    removedRecent.unshift(...Array.from(sortedValues.values()).map((value) => ({
         value,
         date,
     })));
-    return removedRecents.slice(0, maxSize);
+    return removedRecent.slice(0, maxSize);
 }
-function buildRecentList(recents, list) {
-    const set = new Set(recents.map((r) => r.value));
+function buildRecentList(recent, list) {
+    const set = new Set(recent.map(({ value }) => value));
     const items = [
-        ...Array.from(set).map((v) => ({ value: v, isRecent: true })),
+        // filter recent that do not exist in current list
+        ...Array.from(set).flatMap((v) => list.includes(v) ? [{ value: v, isRecent: true }] : []),
         ...list.flatMap((v) => (set.has(v) ? [] : [{ value: v, isRecent: false }])),
     ];
     return items;
@@ -2019,9 +2020,9 @@ async function getAPIConfig() {
                 repo,
                 owner,
                 recents: {
-                    branches: parseRecents(config.recents?.branches || []),
-                    reviewers: parseRecents(config.recents?.reviewers || []),
-                    labels: parseRecents(config.recents?.labels || []),
+                    branches: parseRecent(config.recents?.branches || []),
+                    reviewers: parseRecent(config.recents?.reviewers || []),
+                    labels: parseRecent(config.recents?.labels || []),
                 },
             };
         }
@@ -2123,7 +2124,7 @@ async function getAPIConfig() {
 }
 async function createAPIClient() {
     const config = await getAPIConfig();
-    return new APIClient(config);
+    return new ApiClient(config);
 }
 
 class Everhour {
@@ -2162,7 +2163,7 @@ const TrackerFactory = {
     },
 };
 
-class APIClient {
+class ApiClient {
     config;
     ok;
     constructor(config) {
@@ -2183,8 +2184,16 @@ class APIClient {
         return this.config.tracker;
     }
     async getBranches() {
-        const data = await exec(`git branch -l | grep -v "*" | grep -v "/" | sed -E "s/^ +//"`);
-        return (data || 'main').split('\n').filter(Boolean);
+        const branches = await this.ok.request('GET /repos/{owner}/{repo}/branches', {
+            owner: this.owner,
+            repo: this.repo,
+            per_page: 100,
+            page: 1,
+        });
+        if (!branches.data?.length)
+            throw new Error('Error getting branches');
+        const res = branches.data?.map(({ name }) => name);
+        return res;
     }
     async getCommits(base) {
         const data = await exec(`git cherry ${base} -v | sed -E "s/(\\+|-) [^ ]+ //"`);
@@ -2202,11 +2211,11 @@ class APIClient {
     getRecent(key) {
         return this.config.recents[key];
     }
-    withRecents(key, list) {
+    withRecent(key, list) {
         return buildRecentList(this.getRecent(key), list);
     }
     updateRecent(key, values) {
-        const newList = updateRecents(this.config.recents[key], values, 10);
+        const newList = updateRecent(this.config.recents[key], values, 10);
         this.config.recents[key] = newList;
         this.saveConfig();
         return newList;
@@ -2306,7 +2315,7 @@ class PRBuilder {
     }
     async promptBranch() {
         const branches = await this.api.getBranches();
-        const list = this.api.withRecents('branches', branches);
+        const list = this.api.withRecent('branches', branches);
         const [branch] = await this.promptAutoComplete(list, 1, false);
         this.api.updateRecent('branches', [branch]);
         return branch;
@@ -2328,7 +2337,7 @@ class PRBuilder {
                             stopValue.push(doneToken);
                         if (results.has(value))
                             return stopValue;
-                        const name = `${isRecent ? '🕘' : ` ‣`} ${idx + 1}. ${value}`;
+                        const name = `${isRecent ? '❤︎' : ` `} ${idx + 1}. ${value}`;
                         if (!input)
                             return [...stopValue, name];
                         const regexpLogin = new RegExp(`${input.toLowerCase()}.*`);
@@ -2342,7 +2351,7 @@ class PRBuilder {
             ]);
             if (value === doneToken)
                 break;
-            value = value.replace(/.+(\d+\.|🕘)\s+/, '');
+            value = value.replace(/.+(\d+\.|❤︎)\s+/, '');
             results.add(value);
             if (maxSelect > 0 && results.size >= maxSelect)
                 break;
@@ -2353,7 +2362,7 @@ class PRBuilder {
     }
     async promptReviewers() {
         let collabs = await withTempLine('Search for collabs', () => this.api.getCollabs());
-        const list = this.api.withRecents('reviewers', collabs.map((c) => c.login));
+        const list = this.api.withRecent('reviewers', collabs.map((c) => c.login));
         this.writeReviewers();
         let reviewers = await this.promptAutoComplete(list);
         this.api.updateRecent('reviewers', reviewers);
@@ -2362,7 +2371,7 @@ class PRBuilder {
     async promptLabels() {
         let gitLabels = await withTempLine('Search for labels', () => this.api.getLabels());
         this.writeLabels();
-        const list = this.api.withRecents('labels', gitLabels.map((l) => l.name));
+        const list = this.api.withRecent('labels', gitLabels.map((l) => l.name));
         const labels = await this.promptAutoComplete(list);
         this.api.updateRecent('labels', labels);
         return labels;
