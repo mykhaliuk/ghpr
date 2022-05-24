@@ -1,7 +1,5 @@
 import { Octokit } from '@octokit/core';
 
-import { deleteLastLine, exec, normalize, spawn, tempLine } from '../utils';
-import { saveConfig } from './init';
 import {
   APIClient,
   APIConfig,
@@ -14,7 +12,16 @@ import {
 import { RecentKey as RecentKey } from './interfaces';
 import { buildRecentList, updateRecent } from './recent';
 import { Recent, RecentListItem } from './recent/interface';
-import { TrackerFactory } from './tracker/index';
+import { TrackerFactory } from './tracker';
+
+import {
+  deleteLastLine,
+  exec,
+  normalize,
+  saveConfig,
+  spawn,
+  tempLine,
+} from '../utils';
 
 export class ApiClient implements APIClient {
   protected readonly cfg: APIConfig;
@@ -86,10 +93,6 @@ export class ApiClient implements APIClient {
     return collabs.data as Collaborator[];
   }
 
-  private getRecent(key: RecentKey): Recent[] {
-    return this.cfg.recents[key];
-  }
-
   public withRecent(key: RecentKey, list: string[]): RecentListItem[] {
     return buildRecentList(this.getRecent(key), list);
   }
@@ -100,10 +103,6 @@ export class ApiClient implements APIClient {
 
     this.saveConfig();
     return newList;
-  }
-
-  private saveConfig() {
-    saveConfig(this.cfg);
   }
 
   public async getLabels() {
@@ -126,9 +125,7 @@ export class ApiClient implements APIClient {
       trackerInfo.token,
     );
 
-    const issue = await trackerAPI.getActiveIssue();
-
-    return issue;
+    return trackerAPI.getActiveIssue();
   }
 
   public async getGHIssues(
@@ -192,5 +189,13 @@ export class ApiClient implements APIClient {
         GITHUB_TOKEN: this.cfg.token,
       },
     );
+  }
+
+  private getRecent(key: RecentKey): Recent[] {
+    return this.cfg.recents[key];
+  }
+
+  private saveConfig() {
+    saveConfig(this.cfg);
   }
 }

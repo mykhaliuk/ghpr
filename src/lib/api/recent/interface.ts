@@ -1,14 +1,14 @@
 export type Recent = {
-  date: Date
-  value: string
-}
+  date: Date;
+  value: string;
+};
 
 export type RecentListItem = {
-  value: string
-  isRecent: boolean
-}
+  value: string;
+  isRecent: boolean;
+};
 
 export type SerializedRecent = {
-  date: string
-  value: string
-}
+  date: string;
+  value: string;
+};
