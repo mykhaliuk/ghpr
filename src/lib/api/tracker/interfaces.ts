@@ -1,5 +1,5 @@
-import { Issue } from '../interfaces'
+import { Issue } from '../interfaces';
 
 export interface TrackerAPI {
-  getActiveIssue(): Promise<Issue | null>
+  getActiveIssue(): Promise<Issue | null>;
 }

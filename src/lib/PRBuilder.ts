@@ -28,20 +28,17 @@ export class PRBuilder {
   }
 
   private writeIssue() {
-    this.write('⏰', 'Issue', this.issue?.name || 'No Issue Selected');
+    this.write('⏰', 'Issue', this.issue?.name ?? '');
   }
-
   private writeBranch() {
-    this.write('🌿', 'Branch', this.branch || '');
+    this.write('🌿', 'Branch', this.branch ?? '');
   }
-
   private writeReviewers() {
     this.write('🤓', 'Reviewer', this.reviewers.join(', '));
   }
   private writeDraft() {
     this.write('📑', 'Draft', this.draft ? 'Yes' : 'No');
   }
-
   private writeLabels() {
     this.write('🏷 ', 'Labels', this.labels.join(', '));
   }
@@ -129,7 +126,7 @@ export class PRBuilder {
   }
 
   private async promptLabels(): Promise<string[]> {
-    let gitLabels = await withTempLine('Search for labels', () =>
+    const gitLabels = await withTempLine('Search for labels...', () =>
       this.api.getLabels(),
     );
 
@@ -147,6 +144,29 @@ export class PRBuilder {
     return labels;
   }
 
+  private async promptIssue(): Promise<Issue | null> {
+    const issues = await withTempLine('Fetching GitHub issues...', () =>
+      this.api.getGHIssues(),
+    );
+
+    this.writeIssue();
+
+    const list: RecentListItem[] = issues.map(({ title, number }) => ({
+      value: `#${number} - ${title}`,
+      isRecent: false,
+    }));
+
+    const choices = await this.promptAutoComplete(list, 1);
+
+    if (choices.length === 0) return null;
+
+    const { url, title, number } = issues.find(({ title }) =>
+      choices[0].includes(title),
+    )!;
+
+    return { name: title, url, number };
+  }
+
   private async promptDraft(): Promise<boolean> {
     const { draft } = await prompt([
       {
@@ -162,11 +182,24 @@ export class PRBuilder {
   }
 
   async run(): Promise<PRInfo> {
-    this.issue = await withTempLine('Search current issue...', async () =>
-      this.api.getTrackerIssue(),
-    );
+    const { tracker } = this.api.config;
 
-    this.writeIssue();
+    switch (true) {
+      case tracker?.app === 'everhour':
+        this.issue = await withTempLine('Search current issue...', async () =>
+          this.api.getTrackerIssue(),
+        );
+        this.writeIssue();
+        break;
+      case !tracker?.app:
+      default:
+        this.issue = await this.promptIssue();
+
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+    }
+
     this.branch = await this.promptBranch();
 
     console.clear();
