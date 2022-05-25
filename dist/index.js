@@ -2339,16 +2339,18 @@ class PRBuilder {
         const { tracker } = this.api.config;
         switch (true) {
             case tracker?.app === 'everhour':
-                this.issue = await withTempLine('Search current issue...', async () => this.api.getTrackerIssue());
-                this.writeIssue();
+                this.issue = await withTempLine('Lookup for Everhour issue...', async () => this.api.getTrackerIssue());
+                if (!this.issue) {
+                    this.issue = await this.promptIssue();
+                }
                 break;
             case !tracker?.app:
             default:
                 this.issue = await this.promptIssue();
-                console.clear();
-                this.writeIssue();
-                this.writeBranch();
         }
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
         this.branch = await this.promptBranch();
         console.clear();
         this.writeIssue();
@@ -2464,8 +2466,8 @@ class PRBuilder {
         const choices = await this.promptAutoComplete(list, 1);
         if (choices.length === 0)
             return null;
-        const { url, title, number } = issues.find(({ title }) => choices[0].includes(title));
-        return { name: title, url, number };
+        const { html_url, title, number } = issues.find(({ title }) => choices[0].includes(title));
+        return { name: title, url: html_url, number };
     }
     build() {
         return {

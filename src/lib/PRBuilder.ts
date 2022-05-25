@@ -41,24 +41,27 @@ export class PRBuilder {
 
     switch (true) {
       case tracker?.app === 'everhour':
-        this.issue = await withTempLine('Search current issue...', async () =>
-          this.api.getTrackerIssue(),
+        this.issue = await withTempLine(
+          'Lookup for Everhour issue...',
+          async () => this.api.getTrackerIssue(),
         );
-        this.writeIssue();
+
+        if (!this.issue) {
+          this.issue = await this.promptIssue();
+        }
         break;
       case !tracker?.app:
       default:
         this.issue = await this.promptIssue();
-
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
     }
+
+    console.clear();
+    this.writeIssue();
+    this.writeBranch();
 
     this.branch = await this.promptBranch();
 
     console.clear();
-
     this.writeIssue();
     this.writeBranch();
 
@@ -234,11 +237,11 @@ export class PRBuilder {
 
     if (choices.length === 0) return null;
 
-    const { url, title, number } = issues.find(({ title }) =>
+    const { html_url, title, number } = issues.find(({ title }) =>
       choices[0].includes(title),
     )!;
 
-    return { name: title, url, number };
+    return { name: title, url: html_url, number };
   }
 
   private build(): PRInfo {
