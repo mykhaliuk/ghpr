@@ -151,6 +151,7 @@ export class PRBuilder {
               items.flatMap((item, idx) => {
                 const { value, isRecent } = item;
                 let stopValue = [];
+
                 if (idx === 0 && !input && stopOption)
                   stopValue.push(doneToken);
 
