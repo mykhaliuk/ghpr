@@ -4,17 +4,18 @@ import autocomplete from 'inquirer-autocomplete-prompt';
 
 import { APIClient, Issue, PRInfo } from './api';
 import { RecentListItem } from './api/recent/interface';
-import { withTempLine } from './utils';
+import { exec, withTempLine } from './utils';
 
 prompt.registerPrompt('autocomplete', autocomplete);
 
 export class PRBuilder {
-  private branch: string | undefined;
-  private issue: Issue | null = null;
-  private reviewers: string[] = [];
-  private labels: string[] = [];
-  private draft: boolean = false;
+  private baseBranch: string | undefined;
   private commits: string[] = [];
+  private draft: boolean = false;
+  private headBranch: string | undefined;
+  private issue: Issue | null = null;
+  private labels: string[] = [];
+  private reviewers: string[] = [];
 
   constructor(private api: APIClient) {}
 
@@ -36,63 +37,9 @@ export class PRBuilder {
     return draft;
   }
 
-  public async run(): Promise<PRInfo> {
-    const { tracker } = this.api.config;
-
-    switch (true) {
-      case tracker?.app === 'everhour':
-        this.issue = await withTempLine(
-          'Lookup for Everhour issue...',
-          async () => this.api.getTrackerIssue(),
-        );
-
-        if (!this.issue) {
-          this.issue = await this.promptIssue();
-        }
-        break;
-      case !tracker?.app:
-      default:
-        this.issue = await this.promptIssue();
-    }
-
-    console.clear();
-    this.writeIssue();
-    this.writeBranch();
-
-    this.branch = await this.promptBranch();
-
-    console.clear();
-    this.writeIssue();
-    this.writeBranch();
-
-    this.commits = await withTempLine('Retrieve first commit', async () =>
-      this.api.getCommits(this.branch!),
-    );
-
-    this.writeFirstCommit();
-
-    this.reviewers = await this.promptReviewers();
-
-    console.clear();
-
-    this.writeIssue();
-    this.writeBranch();
-    this.writeFirstCommit();
-    this.writeReviewers();
-
-    this.draft = await PRBuilder.promptDraft();
-    this.labels = await this.promptLabels();
-
-    console.clear();
-
-    this.writeIssue();
-    this.writeBranch();
-    this.writeFirstCommit();
-    this.writeReviewers();
-    this.writeDraft();
-    this.writeLabels();
-
-    return this.build();
+  private async getHeadBranchName() {
+    const branchName = await exec('git rev-parse --abbrev-ref HEAD');
+    return branchName?.replace('\n', '');
   }
 
   private writeFirstCommit() {
@@ -105,7 +52,7 @@ export class PRBuilder {
   }
 
   private writeBranch() {
-    PRBuilder.write('🌿', 'Branch', this.branch ?? '');
+    PRBuilder.write('🌿', 'Branch', this.baseBranch ?? '');
   }
 
   private writeReviewers() {
@@ -247,12 +194,73 @@ export class PRBuilder {
 
   private build(): PRInfo {
     return {
-      branch: this.branch!,
-      draft: this.draft,
-      reviewers: this.reviewers,
-      labels: this.labels,
+      baseBranch: this.baseBranch!,
       commits: this.commits,
+      draft: this.draft,
+      headBranch: this.headBranch!,
       issue: this.issue,
+      labels: this.labels,
+      reviewers: this.reviewers,
     };
+  }
+
+  public async run(): Promise<PRInfo> {
+    const { tracker } = this.api.config;
+
+    switch (true) {
+      case tracker?.app === 'everhour':
+        this.issue = await withTempLine(
+          'Lookup for Everhour issue...',
+          async () => this.api.getTrackerIssue(),
+        );
+
+        if (!this.issue) {
+          this.issue = await this.promptIssue();
+        }
+        break;
+      case !tracker?.app:
+      default:
+        this.issue = await this.promptIssue();
+    }
+
+    console.clear();
+    this.writeIssue();
+    this.writeBranch();
+
+    this.baseBranch = await this.promptBranch();
+    this.headBranch = await this.getHeadBranchName();
+
+    console.clear();
+    this.writeIssue();
+    this.writeBranch();
+
+    this.commits = await withTempLine('Retrieve first commit', async () =>
+      this.api.getCommits(this.baseBranch!),
+    );
+
+    this.writeFirstCommit();
+
+    this.reviewers = await this.promptReviewers();
+
+    console.clear();
+
+    this.writeIssue();
+    this.writeBranch();
+    this.writeFirstCommit();
+    this.writeReviewers();
+
+    this.draft = await PRBuilder.promptDraft();
+    this.labels = await this.promptLabels();
+
+    console.clear();
+
+    this.writeIssue();
+    this.writeBranch();
+    this.writeFirstCommit();
+    this.writeReviewers();
+    this.writeDraft();
+    this.writeLabels();
+
+    return this.build();
   }
 }

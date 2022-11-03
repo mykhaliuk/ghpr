@@ -47,15 +47,12 @@
     "after:build": "exit 0",
     "build": "rm -Rf dist && rollup -c && yarn after:build",
     "dev": "rm -Rf dist && mkdir dist && yarn after:build && rollup -cw",
-    "start": "node dist/index.js",
+    "launch": "node dist/index.js",
     "test": "jest ./src"
   },
   "dependencies": {
-    "@octokit/core": "^3.6.0",
+    "@octokit/core": "^4.1.0",
     "inquirer": "^8.2.1",
     "inquirer-autocomplete-prompt": "^2.0.0"
-  },
-  "engines": {
-    "node": ">=15.x"
   }
 }

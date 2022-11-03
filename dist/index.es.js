@@ -1906,12 +1906,6 @@ chalk.stderr.supportsColor = stderrColor;
 
 var source = chalk;
 
-function normalize(string) {
-    if (!string)
-        return string;
-    const expr = new RegExp(/"/gm);
-    return string.trim().replace(expr, '\\"');
-}
 function stopApp(error, code = 1) {
     if (error) {
         console.clear();
@@ -1939,22 +1933,6 @@ const exec = async (command) => {
     if (stderr)
         throw new Error(stderr);
     return stdout;
-};
-const spawn = async (command, onData, env = {}) => {
-    const childProcess = cp.spawn(command, {
-        shell: true,
-        env: {
-            ...process.env,
-            ...env,
-        },
-    });
-    process.stdin.pipe(childProcess.stdin);
-    for await (const data of childProcess.stdout) {
-        onData(data);
-    }
-    for await (const data of childProcess.stderr) {
-        onData(data);
-    }
 };
 const request = async (options) => {
     return new Promise((resolve, reject) => {
@@ -2185,6 +2163,12 @@ class ApiClient {
     get config() {
         return this.cfg;
     }
+    getRecent(key) {
+        return this.cfg.recents[key];
+    }
+    saveConfig() {
+        saveConfig(this.cfg);
+    }
     async getBranches() {
         const branches = await this.ok.request('GET /repos/{owner}/{repo}/branches', {
             owner: this.owner,
@@ -2194,8 +2178,7 @@ class ApiClient {
         });
         if (!branches.data?.length)
             throw new Error('Error getting branches');
-        const res = branches.data?.map(({ name }) => name);
-        return res;
+        return branches.data?.map(({ name }) => name);
     }
     async getCommits(base) {
         const data = await exec(`git cherry ${base} -v | sed -E "s/(\\+|-) [^ ]+ //"`);
@@ -2248,45 +2231,58 @@ class ApiClient {
     async publishPR(info) {
         console.clear();
         tempLine('Creating pull request...');
-        const { commits, issue, draft, reviewers, labels, branch } = info;
+        // labels, reviewers
+        const { baseBranch, commits, draft, headBranch, issue } = info;
         const [firstCommit = ''] = commits;
-        let body = `${firstCommit}\n\n`;
-        if (issue) {
-            body += `**Related to issue:** \n- ${issue.url}\n\n`;
-        }
+        let body = issue ? `**Related to issue:** \n- ${issue.url}\n\n` : '';
         body += `## Changelog:\n\n`;
         if (commits.length > 0) {
             body += `- ${commits.join('\n- ')}\n\n`;
         }
-        const draftOption = draft ? '-d' : '';
-        const command = [
-            'hub',
-            'pull-request',
-            draftOption,
-            '-p -f',
-            `-a ${this.login}`,
-            `-r "${reviewers.join(',')}"`,
-            `-l "${labels.join(',')}"`,
-            `-b "${normalize(branch)}"`,
-            `-m "${normalize(body)}"`,
-            '--edit',
+        const brandNewIssue = await this.ok
+            .request('POST /repos/{owner}/{repo}/pulls', {
+            base: baseBranch,
+            body,
+            draft,
+            head: `${this.login}:${headBranch}`,
+            owner: this.owner,
+            repo: this.repo,
+            title: firstCommit,
+        })
+            .catch((error) => {
+            console.error(error);
+            process.exit(1);
+        });
+        console.log(brandNewIssue);
+        /* const command = [
+          'hub',
+          'pull-request',
+          draftOption,
+          '-p -f',
+          `-a ${this.login}`,
+          `-r "${reviewers.join(',')}"`,
+          `-l "${labels.join(',')}"`,
+          `-b "${normalize(baseBranch)}"`,
+          `-m "${normalize(body)}"`,
+          '--edit',
         ];
+    
         let progressStringRemoved = false;
-        await spawn(command.join(' '), (data) => {
+        await spawn(
+          command.join(' '),
+          (data) => {
             if (!progressStringRemoved) {
-                deleteLastLine();
-                progressStringRemoved = true;
+              deleteLastLine();
+              progressStringRemoved = true;
             }
             process.stdout.write(data);
-        }, {
+          },
+          {
             GITHUB_TOKEN: this.cfg.token,
-        });
-    }
-    getRecent(key) {
-        return this.cfg.recents[key];
-    }
-    saveConfig() {
-        saveConfig(this.cfg);
+          },
+        );
+    
+        */
     }
 }
 
@@ -2298,12 +2294,13 @@ async function createAPIClient() {
 prompt.registerPrompt('autocomplete', autocomplete);
 class PRBuilder {
     api;
-    branch;
-    issue = null;
-    reviewers = [];
-    labels = [];
-    draft = false;
+    baseBranch;
     commits = [];
+    draft = false;
+    headBranch;
+    issue = null;
+    labels = [];
+    reviewers = [];
     constructor(api) {
         this.api = api;
     }
@@ -2322,44 +2319,9 @@ class PRBuilder {
         ]);
         return draft;
     }
-    async run() {
-        const { tracker } = this.api.config;
-        switch (true) {
-            case tracker?.app === 'everhour':
-                this.issue = await withTempLine('Lookup for Everhour issue...', async () => this.api.getTrackerIssue());
-                if (!this.issue) {
-                    this.issue = await this.promptIssue();
-                }
-                break;
-            case !tracker?.app:
-            default:
-                this.issue = await this.promptIssue();
-        }
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.branch = await this.promptBranch();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.commits = await withTempLine('Retrieve first commit', async () => this.api.getCommits(this.branch));
-        this.writeFirstCommit();
-        this.reviewers = await this.promptReviewers();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.writeFirstCommit();
-        this.writeReviewers();
-        this.draft = await PRBuilder.promptDraft();
-        this.labels = await this.promptLabels();
-        console.clear();
-        this.writeIssue();
-        this.writeBranch();
-        this.writeFirstCommit();
-        this.writeReviewers();
-        this.writeDraft();
-        this.writeLabels();
-        return this.build();
+    async getHeadBranchName() {
+        const branchName = await exec('git rev-parse --abbrev-ref HEAD');
+        return branchName?.replace('\n', '');
     }
     writeFirstCommit() {
         const [firstCommit = ''] = this.commits;
@@ -2369,7 +2331,7 @@ class PRBuilder {
         PRBuilder.write('⏰', 'Issue', this.issue?.name ?? '');
     }
     writeBranch() {
-        PRBuilder.write('🌿', 'Branch', this.branch ?? '');
+        PRBuilder.write('🌿', 'Branch', this.baseBranch ?? '');
     }
     writeReviewers() {
         PRBuilder.write('🤓', 'Reviewer', this.reviewers.join(', '));
@@ -2458,13 +2420,54 @@ class PRBuilder {
     }
     build() {
         return {
-            branch: this.branch,
-            draft: this.draft,
-            reviewers: this.reviewers,
-            labels: this.labels,
+            baseBranch: this.baseBranch,
             commits: this.commits,
+            draft: this.draft,
+            headBranch: this.headBranch,
             issue: this.issue,
+            labels: this.labels,
+            reviewers: this.reviewers,
         };
+    }
+    async run() {
+        const { tracker } = this.api.config;
+        switch (true) {
+            case tracker?.app === 'everhour':
+                this.issue = await withTempLine('Lookup for Everhour issue...', async () => this.api.getTrackerIssue());
+                if (!this.issue) {
+                    this.issue = await this.promptIssue();
+                }
+                break;
+            case !tracker?.app:
+            default:
+                this.issue = await this.promptIssue();
+        }
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.baseBranch = await this.promptBranch();
+        this.headBranch = await this.getHeadBranchName();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.commits = await withTempLine('Retrieve first commit', async () => this.api.getCommits(this.baseBranch));
+        this.writeFirstCommit();
+        this.reviewers = await this.promptReviewers();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeFirstCommit();
+        this.writeReviewers();
+        this.draft = await PRBuilder.promptDraft();
+        this.labels = await this.promptLabels();
+        console.clear();
+        this.writeIssue();
+        this.writeBranch();
+        this.writeFirstCommit();
+        this.writeReviewers();
+        this.writeDraft();
+        this.writeLabels();
+        return this.build();
     }
 }
 

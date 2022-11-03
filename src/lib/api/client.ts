@@ -14,14 +14,7 @@ import { buildRecentList, updateRecent } from './recent';
 import { Recent, RecentListItem } from './recent/interface';
 import { TrackerFactory } from './tracker';
 
-import {
-  deleteLastLine,
-  exec,
-  normalize,
-  saveConfig,
-  spawn,
-  tempLine,
-} from '../utils';
+import { exec, saveConfig, tempLine } from '../utils';
 
 export class ApiClient implements APIClient {
   protected readonly cfg: APIConfig;
@@ -54,6 +47,14 @@ export class ApiClient implements APIClient {
     return this.cfg;
   }
 
+  private getRecent(key: RecentKey): Recent[] {
+    return this.cfg.recents[key];
+  }
+
+  private saveConfig() {
+    saveConfig(this.cfg);
+  }
+
   public async getBranches(): Promise<string[]> {
     const branches = await this.ok.request(
       'GET /repos/{owner}/{repo}/branches',
@@ -67,8 +68,7 @@ export class ApiClient implements APIClient {
 
     if (!branches.data?.length) throw new Error('Error getting branches');
 
-    const res = branches.data?.map(({ name }) => name);
-    return res;
+    return branches.data?.map(({ name }) => name);
   }
 
   public async getCommits(base: string): Promise<string[]> {
@@ -146,23 +146,36 @@ export class ApiClient implements APIClient {
     console.clear();
 
     tempLine('Creating pull request...');
-    const { commits, issue, draft, reviewers, labels, branch } = info;
+    // labels, reviewers
+    const { baseBranch, commits, draft, headBranch, issue } = info;
 
     const [firstCommit = ''] = commits;
 
-    let body = `${firstCommit}\n\n`;
-    if (issue) {
-      body += `**Related to issue:** \n- ${issue.url}\n\n`;
-    }
-
+    let body = issue ? `**Related to issue:** \n- ${issue.url}\n\n` : '';
     body += `## Changelog:\n\n`;
+
     if (commits.length > 0) {
       body += `- ${commits.join('\n- ')}\n\n`;
     }
 
-    const draftOption = draft ? '-d' : '';
+    const brandNewIssue = await this.ok
+      .request('POST /repos/{owner}/{repo}/pulls', {
+        base: baseBranch,
+        body,
+        draft,
+        head: `${this.login}:${headBranch}`,
+        owner: this.owner,
+        repo: this.repo,
+        title: firstCommit,
+      })
+      .catch((error) => {
+        console.error(error);
+        process.exit(1);
+      });
 
-    const command = [
+    console.log(brandNewIssue);
+
+    /* const command = [
       'hub',
       'pull-request',
       draftOption,
@@ -170,7 +183,7 @@ export class ApiClient implements APIClient {
       `-a ${this.login}`,
       `-r "${reviewers.join(',')}"`,
       `-l "${labels.join(',')}"`,
-      `-b "${normalize(branch)}"`,
+      `-b "${normalize(baseBranch)}"`,
       `-m "${normalize(body)}"`,
       '--edit',
     ];
@@ -189,13 +202,7 @@ export class ApiClient implements APIClient {
         GITHUB_TOKEN: this.cfg.token,
       },
     );
-  }
 
-  private getRecent(key: RecentKey): Recent[] {
-    return this.cfg.recents[key];
-  }
-
-  private saveConfig() {
-    saveConfig(this.cfg);
+    */
   }
 }

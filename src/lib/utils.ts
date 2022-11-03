@@ -10,13 +10,6 @@ import { APIConfig, TrackerAppName, TrackerInfo } from './api';
 import { SerializedRecent } from './api/recent/interface';
 import { parseRecent } from './api/recent';
 
-export function normalize(string: string) {
-  if (!string) return string;
-  const expr = new RegExp(/"/gm);
-
-  return string.trim().replace(expr, '\\"');
-}
-
 export function stopApp(error?: string, code = 1) {
   if (error) {
     console.clear();
@@ -123,11 +116,13 @@ export const request = async <T = any>(
     req.write('');
   });
 };
+
 type PromptAPIConfig = {
   login: string;
   token?: string;
   trackerName: TrackerAppName;
 };
+
 type StoredAPIConfig = Omit<APIConfig, 'repo' | 'owner' | 'recents'> & {
   recents: {
     branches: SerializedRecent[];
@@ -135,6 +130,7 @@ type StoredAPIConfig = Omit<APIConfig, 'repo' | 'owner' | 'recents'> & {
     labels: SerializedRecent[];
   };
 };
+
 type RepoInfo = {
   repo: string;
   owner: string;

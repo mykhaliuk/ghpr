@@ -10,9 +10,10 @@ export type Issue = {
 export type GHIssues = Endpoints['GET /issues']['response']['data'];
 
 export type PRInfo = {
-  branch: string;
+  baseBranch: string;
   commits: string[];
   draft: boolean;
+  headBranch: string;
   issue: Issue | null;
   labels: string[];
   reviewers: string[];
