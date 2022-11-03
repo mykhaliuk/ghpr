@@ -2265,7 +2265,7 @@ class ApiClient {
         const [firstCommit = ''] = commits;
         let body = `${firstCommit}\n\n`;
         if (issue) {
-            body += `**Related to issue:** ${`[${issue.name} #${issue.number}](${issue.url})\n\n`}`;
+            body += `**Related to issue:** \n- ${issue.url}\n\n`;
         }
         body += `## Changelog:\n\n`;
         if (commits.length > 0) {
